@@ -157,8 +157,5 @@ def inference(data):
     result = re.sub(r'\s+',' ',result)
     result = re.sub(r"\'",'\"',result)
     
-    print(result)
-    print(type(result))
-    
     result = json.loads(result)
     return result

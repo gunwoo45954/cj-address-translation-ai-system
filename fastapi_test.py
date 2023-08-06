@@ -115,7 +115,13 @@ def create_response(item : Request):
             return response2
 
         result_list += inference(chunk)["resultList"]
+    
+    for i in result_list:
+        i['seq'] = int(i['seq'])
     print(result_list)
+    
+    result_dict = {"requestList":result_list}
+    request_list = result_dict
     check_address = 1
     body_items = []
 
