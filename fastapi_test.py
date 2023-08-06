@@ -6,9 +6,11 @@ from KoreanAddress import get_address
 import numpy as np
 import logging
 from omegaconf import OmegaConf
+from model import validate_json,inference, request_schema
 
+import os
 import argparse
-
+import openai
 
 # 해야 할 일_0806
 # 1. Chat gpt를 사용해 영문 주소 -> 한글 주소로 변환 구현.
@@ -26,7 +28,11 @@ conf = OmegaConf.load(f'./config/{args.config}.yaml')
 
 # 도로명주소 api_key 값
 api_key = conf.api
-print(api_key)
+chatapi_key = conf.chatgpt
+
+
+os.environ["OPENAI_API_KEY"] = chatapi_key
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Response JSON 형식
     # HEADER : 응답 성공/실패 여부(Array)
@@ -39,10 +45,10 @@ print(api_key)
 # Request JSON 형식
 class RequestItem(BaseModel):
     seq : int = Field(gt = 0, le = 99999999)
-    requestAddress : str = Field(..., max_length=2000)
+    requestAddress : str = Field(...)
 
 class Request(BaseModel):
-    requestList: List[RequestItem] = Field(..., max_length=20000)
+    requestList: List[RequestItem] = Field(...)
 
 # Response JSON 형식
 class HeaderItem(BaseModel):
@@ -79,6 +85,11 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     return response
 
+def chunk_list(lst, chunk_size):
+    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+
+
+
 @app.post('/result/')
 def create_response(item : Request):
     # 이 함수는 다음과 같은 기능을 수행
@@ -86,13 +97,36 @@ def create_response(item : Request):
     # 2. response 반환
     response = Response(HEADER=HeaderItem())
     request_list = item.requestList
+    
+    chunk_size = 10
+    input_data =  [{'seq': i.seq, 'requestAddress': i.requestAddress} for i in request_list]
+    data_chunk = chunk_list(input_data, chunk_size)
+    data_chunk = [{"requestList":i} for i in data_chunk]
+    
+    result_list = []
+    for idx,chunk in enumerate(data_chunk):
+        if validate_json(chunk,request_schema):
+            check_address = 0
+            response.HEADER.RESULT_CODE = "F"
+            response.HEADER.RESULT_MSG = f"seq {request_list[i].seq} is failed to transfer"
+            response2 = Response_fail(HEADER=HeaderItem())
+            response2.HEADER.RESULT_CODE = response.HEADER.RESULT_CODE
+            response2.HEADER.RESULT_MSG = response.HEADER.RESULT_MSG
+            return response2
+
+        result_list += inference(chunk)["resultList"]
+    print(result_list)
     check_address = 1
     body_items = []
 
     for i in range(len(request_list)):
         body_item = BodyItem(seq="some_value", resultAddress="some_address")
+        
+        
+        ## TODO: 받는 형식 확인
+        
+        ### 
         result_address = get_address(api_key, request_list[i].requestAddress)
-
         if result_address == "답 없음":
             check_address = 0
             response.HEADER.RESULT_CODE = "F"

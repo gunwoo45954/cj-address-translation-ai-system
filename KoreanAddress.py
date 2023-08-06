@@ -19,9 +19,3 @@ def get_address(api_key, word):
         data.append("답 없음")
 
     return data[0]
-
-api_key = 'devU01TX0FVVEgyMDIzMDcxMjE5MzIyMTExMzkyMjQ='
-word = '대구 북구 췍로'
-
-address = get_address(api_key, word)
-print(address)
