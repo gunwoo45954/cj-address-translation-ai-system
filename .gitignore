@@ -197,7 +197,6 @@ output.csv
 models/
 
 
-*.yaml
 *.csv
 ._*
 *.pkl

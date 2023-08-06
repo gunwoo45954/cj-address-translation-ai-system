@@ -5,6 +5,10 @@ import uvicorn
 from KoreanAddress import get_address
 import numpy as np
 import logging
+from omegaconf import OmegaConf
+
+import argparse
+
 
 # 해야 할 일_0806
 # 1. Chat gpt를 사용해 영문 주소 -> 한글 주소로 변환 구현.
@@ -12,7 +16,17 @@ import logging
 # 3. API URL로 배포. heroku 사용 예정.
 # 4. CJ에서 지급한 데이터를 json형식으로 모두 변환하여 테스트. 지연 시간도 확인.
 
+
+# Argument
+parser = argparse.ArgumentParser()
+parser.add_argument('--config','-c', type=str, default='')
+args, _ = parser.parse_known_args()
+
+conf = OmegaConf.load(f'./config/{args.config}.yaml')
+
 # 도로명주소 api_key 값
+api_key = conf.api
+print(api_key)
 
 # Response JSON 형식
     # HEADER : 응답 성공/실패 여부(Array)
