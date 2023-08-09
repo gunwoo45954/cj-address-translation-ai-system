@@ -86,9 +86,8 @@ def pre_processing(text):
 
 def post_processing(text):
     text = re.sub(r'[bB]', '', text)
-    p = re.compile(r'((로[^가-힣]\s*([0-9]{1,}(번)?\s*길)?|길))?\s*(지하)?\s*[0-9]{1,}(-[0-9]{1,})?')
+    p = re.compile(r'(([가-힣0-9]+로[^가-힣]\s*([0-9]{1,5}(번)?\s*길)?|길))?\s*(지하)?\s*[0-9]{1,5}(-[0-9]{1,5})?')
     s = p.search(text)
-    print(s)
     if s is not None:
         text = text[:s.span()[1]]
 
@@ -130,7 +129,7 @@ def validate_json(data, schema):
         state = 1
     return state
   
-def inference(data):
+def inference(input):
     template = """
     |Start of task|
     - You will work on translating a non-refined address in English into refined Korean. 
@@ -168,6 +167,11 @@ def inference(data):
 
     Output: 
     """
+    # 전처리 추가
+    data = dict()
+    data["requestList"] = [{"seq":i["seq"],"requestAddress":pre_processing(i["requestAddress"])}for i in input["requestList"]]
+    
+    # data = temp
     
     prompt = PromptTemplate(
     input_variables=["Address_Input", "output_schema"],
@@ -180,9 +184,9 @@ def inference(data):
     result = re.sub(r'\n',' ',result)
     result = re.sub(r'\s+',' ',result)
     result = re.sub(r"\'",'\"',result)
-    print(result)
+
     result = json.loads(result)
     temp = dict()
     temp["resultList"] = [{'seq': i["seq"], 'requestAddress' : post_processing(i["requestAddress"])} for i in result["resultList"]]
-    print(temp)
+
     return temp
