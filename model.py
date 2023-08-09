@@ -184,9 +184,9 @@ def inference(input):
     result = re.sub(r'\n',' ',result)
     result = re.sub(r'\s+',' ',result)
     result = re.sub(r"\'",'\"',result)
-
+    # print(result)
     result = json.loads(result)
     temp = dict()
     temp["resultList"] = [{'seq': i["seq"], 'requestAddress' : post_processing(i["requestAddress"])} for i in result["resultList"]]
-
+    # print(temp)
     return temp
