@@ -8,6 +8,82 @@ from langchain import PromptTemplate
 from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 
+def pre_processing(text):
+    text = re.sub(r"(대한민국|Republic of Korea)"," ",text)
+
+    text = re.sub(r"-(do|도)","-do ",text)
+    text = re.sub(r"-(si|시)","-si ",text)
+    text = re.sub(r"-(gu|구)","-gu ",text)
+    text = re.sub(r"-(ro|로)","-ro ",text)
+    
+    text = re.sub(r"[\!\?@#$\^&*]",'',text)
+
+    
+    # 문앞 집앞
+    text = re.sub(r'문\s*앞',' ',text)
+    text = re.sub(r'집\s*앞',' ',text)
+    text = re.sub(r'[Mm][Uu][Nmn]\s*[Aa][Pp]',' ',text)
+    text = re.sub(r'[Jj][Ii][Pp]\s*[Aa][Pp]',' ',text)
+    
+    # 괄호 전처리 (삭제)
+    s = re.search(r"\([^\)]+\)",text)
+    if s:
+        text = text[:s.span()[0]] + text[s.span()[1]:]
+    
+    
+    # 지하 전처리
+    text = re.sub("B1-","B",text)
+    p = re.compile(r"(B\s?([0-9]{1,}|,)| B |([0-9]{1,}\s?|,)B)")
+    s = p.search(text)
+    if s:
+        match = text[s.start():s.end()]
+        match = re.sub(r"B"," 지하",match)
+        if s.start() == 0:
+            text = match + text[s.span()[1]:]
+        else:
+            text = text[:s.start()]+ match +text[s.end():]
+    p = re.compile(r"(G/F\s?([0-9]{1,}|,)| G/F |([0-9]{1,}\s?|,)G/F)")
+    s = p.search(text)
+    
+    if s:
+        match = text[s.start():s.end()]
+        match = re.sub(r"G/F"," 지하",match)
+        if s.start() == 0:
+            text = match + text[s.span()[1]:]
+        else:
+            text = text[:s.start()]+ match +text[s.end():]
+
+    p = re.compile(r"(GF\s?([0-9]{1,}|,)| GF |([0-9]{1,}\s?|,)GF)")
+    s = p.search(text)
+    
+    if s:
+        match = text[s.start():s.end()]
+        match = re.sub(r"GF"," 지하",match)
+        if s.start() == 0:
+            text = match + text[s.span()[1]:]
+        else:
+            text = text[:s.start()]+ match +text[s.end():]
+            
+    p = re.compile(r"(G\s?([0-9]{1,}|,)| G |([0-9]{1,}\s?|,)G)")
+    s = p.search(text)
+    
+    if s:
+        match = text[s.start():s.end()]
+        match = re.sub(r"G"," 지하",match)
+        if s.start() == 0:
+            text = match + text[s.span()[1]:]
+        else:
+            text = text[:s.start()]+ match +text[s.end():]
+    
+
+    text = re.sub(r"\s+"," ",text).strip()            
+    
+    text = re.sub(' ,',",",text)
+    text = re.sub(",$",' ',text)
+
+        
+    return text
+
 def post_processing(text):
     text = re.sub(r'[bB]', '', text)
     p = re.compile(r'((로[^가-힣]\s*([0-9]{1,}(번)?\s*길)?|길))?\s*(지하)?\s*[0-9]{1,}(-[0-9]{1,})?')
@@ -68,7 +144,7 @@ def inference(data):
     requestAddress : 127, B, Seosomun-ro, Jung-gu, 새울 -> requestAddress : 서울특별시 중구 서소문로 지하127 (서소문동)
     requestAddress : GF160, Yanghwa-ro, 마포-gu, Seoul -> requestAddress : 서울특별시 마포구 양화로 지하160 (동교동)
 
-    2. Addresses and requests may be mixed. In the example below, "문 앞 배관실 넣어주세요" corresponds to the request. This is purified except when it is purified
+    2. Addresses and requests may be mixed. The request may be in front of or behind the address. In the example below, "문 앞 배관실 넣어주세요" corresponds to the request. This is purified except when it is purified
     requestAddress : Incheon Tax Office, 75, Ugak-ro, Dong-gu, Incheon 문 앞 배관실 넣어주세요 -> requestAddress : 인천광역시 동구 우각로 75 (창영동)
     requestAddress : 배송전 전화주세요Jungbu Tax Office, 170, Toegye-ro, Jung-gu, Seoul -> requestAddress : 서울특별시 중구 퇴계로 170 (남학동)
 
