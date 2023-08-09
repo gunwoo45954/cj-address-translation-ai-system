@@ -197,9 +197,10 @@ output.csv
 models/
 
 
-*.yaml
 *.csv
 ._*
 *.pkl
 logs/
 analysis/
+
+*.yaml
