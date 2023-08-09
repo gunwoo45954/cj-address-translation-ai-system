@@ -10,7 +10,7 @@ from langchain.chat_models import ChatOpenAI
 
 def post_processing(text):
     text = re.sub(r'[bB]', '', text)
-    p = re.compile(r'((로[^가-힣]\s*([0-9]{1,5}(번)?\s*길)?|길))?\s*(지하)?\s*[0-9]{1,5}(-[0-9]{1,5})?')
+    p = re.compile(r'((로[^가-힣]\s*([0-9]{1,}(번)?\s*길)?|길))?\s*(지하)?\s*[0-9]{1,}(-[0-9]{1,})?')
     s = p.search(text)
     print(s)
     if s is not None:
