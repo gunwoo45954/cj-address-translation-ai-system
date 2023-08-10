@@ -86,6 +86,12 @@ def post_processing(text):
     if s is not None:
         text = text[:s.span()[1]]
 
+    p2 = re.compile(r'(지하)?\s?[0-9]+') # (지하) #### 인 경우 잡기
+    s2 = p2.match(text)
+    
+    if s2:
+        text = "답 없음"
+    
     return text
 
 # Define the JSON Schema
