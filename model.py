@@ -1,18 +1,88 @@
 import re
-import os
 import json
 
-import openai
 from jsonschema import validate, ValidationError
 from langchain import PromptTemplate
 from langchain.llms import OpenAI
-from langchain.chat_models import ChatOpenAI
+
+def pre_processing(text):
+    text = re.sub(r"(대한민국|Republic of Korea)"," ",text)
+
+    text = re.sub(r"-(do|도)","-do ",text)
+    text = re.sub(r"-(si|시)","-si ",text)
+    text = re.sub(r"-(gu|구)","-gu ",text)
+    text = re.sub(r"-(ro|로)","-ro ",text)
+    
+    text = re.sub(r"[\!\?@#$\^&*]",'',text)
+
+    # 문앞 집앞
+    text = re.sub(r'문\s*앞',' ',text)
+    text = re.sub(r'집\s*앞',' ',text)
+    text = re.sub(r'[Mm][Uu][Nmn]\s*[Aa][Pp]',' ',text)
+    text = re.sub(r'[Jj][Ii][Pp]\s*[Aa][Pp]',' ',text)
+    
+    # 괄호 전처리 (삭제)
+    s = re.search(r"\([^\)]+\)",text)
+    if s:
+        text = text[:s.span()[0]] + text[s.span()[1]:]
+    
+    
+    # 지하 전처리
+    text = re.sub("B1-","B",text)
+    p = re.compile(r"(B\s?([0-9]{1,}|,)| B |([0-9]{1,}\s?|,)B)")
+    s = p.search(text)
+    if s:
+        match = text[s.start():s.end()]
+        match = re.sub(r"B"," 지하",match)
+        if s.start() == 0:
+            text = match + text[s.span()[1]:]
+        else:
+            text = text[:s.start()]+ match +text[s.end():]
+    p = re.compile(r"(G/F\s?([0-9]{1,}|,)| G/F |([0-9]{1,}\s?|,)G/F)")
+    s = p.search(text)
+    
+    if s:
+        match = text[s.start():s.end()]
+        match = re.sub(r"G/F"," 지하",match)
+        if s.start() == 0:
+            text = match + text[s.span()[1]:]
+        else:
+            text = text[:s.start()]+ match +text[s.end():]
+
+    p = re.compile(r"(GF\s?([0-9]{1,}|,)| GF |([0-9]{1,}\s?|,)GF)")
+    s = p.search(text)
+    
+    if s:
+        match = text[s.start():s.end()]
+        match = re.sub(r"GF"," 지하",match)
+        if s.start() == 0:
+            text = match + text[s.span()[1]:]
+        else:
+            text = text[:s.start()]+ match +text[s.end():]
+            
+    p = re.compile(r"(G\s?([0-9]{1,}|,)| G |([0-9]{1,}\s?|,)G)")
+    s = p.search(text)
+    
+    if s:
+        match = text[s.start():s.end()]
+        match = re.sub(r"G"," 지하",match)
+        if s.start() == 0:
+            text = match + text[s.span()[1]:]
+        else:
+            text = text[:s.start()]+ match +text[s.end():]
+    
+
+    text = re.sub(r"\s+"," ",text).strip()            
+    
+    text = re.sub(' ,',",",text)
+    text = re.sub(",$",' ',text)
+
+    return text
 
 def post_processing(text):
     text = re.sub(r'[bB]', '', text)
-    p = re.compile(r'((로[^가-힣]\s*([0-9]{1,5}(번)?\s*길)?|길))?\s*(지하)?\s*[0-9]{1,5}(-[0-9]{1,5})?')
+    p = re.compile(r'(([가-힣0-9]+로[^가-힣]\s*([0-9]{1,5}(번)?\s*길)?|길))?\s*(지하)?\s*[0-9]{1,5}(-[0-9]{1,5})?')
     s = p.search(text)
-    print(s)
     if s is not None:
         text = text[:s.span()[1]]
 
@@ -36,25 +106,25 @@ result_schema = {
                       "type": "string"
                   },
               },
-              "required": ["resultList","seq"]
+              "required": ["requestAddress","seq"]
           }
       }
   },
-  "required": ["requestList"]
+  "required": ["resultList"]
 }
 
 def validate_json(data, schema):
     # Validate the JSON against the schema
-    state = 0
+    state = True
     try:
         validate(instance=data, schema=schema)
         print("The JSON structure is valid.")
     except ValidationError as e:
         print(f"The JSON structure is not valid: {e}")
-        state = 1
+        state = False
     return state
   
-def inference(data):
+def inference(input):
     template = """
     |Start of task|
     - You will work on translating a non-refined address in English into refined Korean. 
@@ -64,25 +134,21 @@ def inference(data):
 
     |Start of Rule|
     There are some rules when you translate.
-    1. If B, G/F, GF or G exists in the unstructured address, they mean underground. And change them to "지하" and get rid of them.
-    requestAddress : 127, B, Seosomun-ro, Jung-gu, 새울 -> requestAddress : 서울특별시 중구 서소문로 지하127 (서소문동)
-    requestAddress : GF160, Yanghwa-ro, 마포-gu, Seoul -> requestAddress : 서울특별시 마포구 양화로 지하160 (동교동)
-
-    2. Addresses and requests may be mixed. In the example below, "문 앞 배관실 넣어주세요" corresponds to the request. This is purified except when it is purified
+    1. Addresses and requests may be mixed. The request may be in front of or behind the address. In the example below, "문 앞 배관실 넣어주세요" corresponds to the request. This is purified except when it is purified
     requestAddress : Incheon Tax Office, 75, Ugak-ro, Dong-gu, Incheon 문 앞 배관실 넣어주세요 -> requestAddress : 인천광역시 동구 우각로 75 (창영동)
     requestAddress : 배송전 전화주세요Jungbu Tax Office, 170, Toegye-ro, Jung-gu, Seoul -> requestAddress : 서울특별시 중구 퇴계로 170 (남학동)
 
-    3. There may be a typo in the place name, as shown in the following example. SOUL is a typo of Seoul.
+    2. There may be a typo in the place name, as shown in the following example. SOUL is a typo of Seoul.
     requestAddress : B 101, Sejong-daero, Jung-gu, SOUL -> requestAddress : 서울특별시 중구 세종대로 지하101 (정동)
 
-    4. Words translated into English, such as "South Mountain" and "Best-ro," may exist. This corresponds to "남산","으뜸로" respectively
+    3. Words translated into English, such as "South Mountain" and "Best-ro," may exist. This corresponds to "남산","으뜸로" respectively
     requestAddress : Gwangju Regional Joint Government Complex, 43, Advanced Science and Technology Road 208beon-gil, Buk-gu, Gwangju1001ho1001동 -> requestAddress : 광주광역시 북구 첨단과기로208번길 43 (오룡동)
 
-    5. Detailed locations such as document delivery room, front door, 1001 room, 1001 building are not translated.
+    4. Do not translate detailed address information such as building number, unit number, and building name.
     requestAddress : Dongdaemun Police Station, 29, Yaknyeongsi-ro 21-gil, Dongdaemun-gu, Seoul문서수발실 -> requestAddress : 서울특별시 동대문구 약령시로21길 29 (청량리동)
     requestAddress : B1721, Nambu Ring-ro, Gwanak-gu, Seoul 김&장 -> requestAddress : 서울특별시 관악구 남부순환로 지하1721 (봉천동)
     requestAddress : 86, Yongdap-gil, Seongdong-gu, Seoul customs office 100% -> requestAddress : 서울특별시 성동구 용답길 86 (용답동)
-
+    requestAddress : 359 Jongno-gu, Jongno-gu, Seoul 101동 -> requestAddress : 서울 종로구 359
     |End of Rule|
 
     You don't have to print out the sample, just output answer.
@@ -92,21 +158,29 @@ def inference(data):
 
     Output: 
     """
-    
-    prompt = PromptTemplate(
-    input_variables=["Address_Input", "output_schema"],
-    template=template,
-    )
-    prompt = prompt.format(Address_Input=data, output_schema=result_schema)   
-    llm = OpenAI(model_name="gpt-3.5-turbo")
-    result = llm(prompt)
 
-    result = re.sub(r'\n',' ',result)
-    result = re.sub(r'\s+',' ',result)
-    result = re.sub(r"\'",'\"',result)
-    print(result)
-    result = json.loads(result)
+    # 전처리 추가
+    data = dict()
+    data["requestList"] = [{"seq":i["seq"],"requestAddress":pre_processing(i["requestAddress"])}for i in input["requestList"]]
+
+    state = False
+    while(not state):
+        prompt = PromptTemplate(
+        input_variables=["Address_Input", "output_schema"],
+        template=template,
+        )
+        prompt = prompt.format(Address_Input=data, output_schema=result_schema)   
+        llm = OpenAI(model_name="gpt-3.5-turbo-16k")
+        result = llm(prompt)
+        
+        result = re.sub(r'\n',' ',result)
+        result = re.sub(r'\s+',' ',result)
+        result = re.sub(r"\'",'\"',result)
+        result = json.loads(result)
+        
+        state = validate_json(result, result_schema)
+
     temp = dict()
     temp["resultList"] = [{'seq': i["seq"], 'requestAddress' : post_processing(i["requestAddress"])} for i in result["resultList"]]
-    print(temp)
+
     return temp

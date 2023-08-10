@@ -123,7 +123,7 @@ def create_response(item : RequestJSON):
     input_data =  [{'seq': i.seq, 'requestAddress': i.requestAddress} for i in request_list]
     data_chunk = chunk_list(input_data, chunk_size)
     data_chunk = [{"requestList":i} for i in data_chunk]
-    
+
     result_list = []
 
     for idx,chunk in enumerate(data_chunk):
