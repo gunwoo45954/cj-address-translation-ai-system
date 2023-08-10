@@ -1,12 +1,9 @@
 import re
-import os
 import json
 
-import openai
 from jsonschema import validate, ValidationError
 from langchain import PromptTemplate
 from langchain.llms import OpenAI
-from langchain.chat_models import ChatOpenAI
 
 def pre_processing(text):
     text = re.sub(r"(대한민국|Republic of Korea)"," ",text)
@@ -18,7 +15,6 @@ def pre_processing(text):
     
     text = re.sub(r"[\!\?@#$\^&*]",'',text)
 
-    
     # 문앞 집앞
     text = re.sub(r'문\s*앞',' ',text)
     text = re.sub(r'집\s*앞',' ',text)
@@ -81,7 +77,6 @@ def pre_processing(text):
     text = re.sub(' ,',",",text)
     text = re.sub(",$",' ',text)
 
-        
     return text
 
 def post_processing(text):
@@ -149,11 +144,11 @@ def inference(input):
     3. Words translated into English, such as "South Mountain" and "Best-ro," may exist. This corresponds to "남산","으뜸로" respectively
     requestAddress : Gwangju Regional Joint Government Complex, 43, Advanced Science and Technology Road 208beon-gil, Buk-gu, Gwangju1001ho1001동 -> requestAddress : 광주광역시 북구 첨단과기로208번길 43 (오룡동)
 
-    4. Detailed locations such as document delivery room, front door, 1001 room, 1001 building are not translated.
+    4. Do not translate detailed address information such as building number, unit number, and building name.
     requestAddress : Dongdaemun Police Station, 29, Yaknyeongsi-ro 21-gil, Dongdaemun-gu, Seoul문서수발실 -> requestAddress : 서울특별시 동대문구 약령시로21길 29 (청량리동)
     requestAddress : B1721, Nambu Ring-ro, Gwanak-gu, Seoul 김&장 -> requestAddress : 서울특별시 관악구 남부순환로 지하1721 (봉천동)
     requestAddress : 86, Yongdap-gil, Seongdong-gu, Seoul customs office 100% -> requestAddress : 서울특별시 성동구 용답길 86 (용답동)
-
+    requestAddress : 359 Jongno-gu, Jongno-gu, Seoul 101동 -> requestAddress : 서울 종로구 359
     |End of Rule|
 
     You don't have to print out the sample, just output answer.
@@ -163,13 +158,11 @@ def inference(input):
 
     Output: 
     """
+
     # 전처리 추가
-    
-    
     data = dict()
     data["requestList"] = [{"seq":i["seq"],"requestAddress":pre_processing(i["requestAddress"])}for i in input["requestList"]]
-    
-    # data = temp
+
     state = False
     while(not state):
         prompt = PromptTemplate(
@@ -177,7 +170,7 @@ def inference(input):
         template=template,
         )
         prompt = prompt.format(Address_Input=data, output_schema=result_schema)   
-        llm = OpenAI(model_name="gpt-3.5-turbo")
+        llm = OpenAI(model_name="gpt-3.5-turbo-16k")
         result = llm(prompt)
         
         result = re.sub(r'\n',' ',result)
@@ -186,9 +179,8 @@ def inference(input):
         result = json.loads(result)
         
         state = validate_json(result, result_schema)
-    
-    
+
     temp = dict()
     temp["resultList"] = [{'seq': i["seq"], 'requestAddress' : post_processing(i["requestAddress"])} for i in result["resultList"]]
-    # print(temp)
+
     return temp
