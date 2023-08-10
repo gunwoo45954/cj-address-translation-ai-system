@@ -2,7 +2,6 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-
 def get_address(api_key, word):
     url = f'https://business.juso.go.kr/addrlink/addrLinkApi.do?currentPage=1&countPerPage%20=10&keyword={word}&confmKey={api_key}&hstryYn=Y&firstSort=road'
 
@@ -17,5 +16,8 @@ def get_address(api_key, word):
             data.append(item.text)
     else:                                       # 검색 결과가 나오지 않는 경우
         data.append("답 없음")
+
+    if (len(data) > 1) and (data[0] != data[1]):
+        data = ["답 없음"]
 
     return data[0]
