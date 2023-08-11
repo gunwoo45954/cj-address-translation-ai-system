@@ -1,4 +1,3 @@
-import re
 import requests
 from bs4 import BeautifulSoup
 
@@ -34,8 +33,9 @@ def get_address(api_key, word):
         # data[1] = 서울특별시 서대문구 통일로 87 (미근동) 인경우
         # 서울특별시 서대문구 통일로 81가 매칭되지 않음 -> 답없음
         
-        temp = re.sub(r'\([가-힣]+\)','',data[0]).strip()
-        m = re.match(temp,data[1])
-        if m is None:
+        if data[0].split()[-3] not in data[1].split()[-3]:
             data = ["답 없음"]
+        elif data[0].split()[-2] not in data[1].split()[-2]:
+            data = ["답 없음"]
+            
     return data[0]

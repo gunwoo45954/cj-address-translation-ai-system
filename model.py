@@ -6,6 +6,10 @@ from langchain import PromptTemplate
 from langchain.llms import OpenAI
 
 def pre_processing(text):
+    
+    # ',' -> ' '
+    text = re.sub(r',',' ',text)
+    text = re.sub(r'100%','',text)
     text = re.sub(r"(대한민국|Republic of Korea)"," ",text)
 
     text = re.sub(r"-(do|도)","-do ",text)
@@ -13,7 +17,7 @@ def pre_processing(text):
     text = re.sub(r"-(gu|구)","-gu ",text)
     text = re.sub(r"-(ro|로)","-ro ",text)
     
-    text = re.sub(r"[\!\?@#$\^&*]",'',text)
+    text = re.sub(r"[\!\?@#$\^&*]",' ',text)
 
     # 문앞 집앞
     text = re.sub(r'문\s*앞',' ',text)
@@ -73,21 +77,19 @@ def pre_processing(text):
     
 
     text = re.sub(r"\s+"," ",text).strip()            
-    
-    text = re.sub(' ,',",",text)
-    text = re.sub(",$",' ',text)
 
     return text
-
 def post_processing(text):
     text = re.sub(r'[bB]', '', text)
     
     # 수정 부분 : 서울특별시 관악구 관악로5길 33 -> "서울특별시 관악구 관악로5 처리되는 부분 수정
     text = re.sub(r',','',text)
-    p = re.compile(r'[가-힣0-9]+(로|길)\s*([0-9]+번?\s*길)?\s*(지하)?\s*[0-9]+(-[0-9]+)?')
+    p = re.compile(r'([가-힣0-9]+(로|길)\s*([0-9]+번?\s*(길|가)\s*)?)?(지하)?\s*[0-9]+(-[0-9]+)?(가|번?길|로)?\s?(지하)?')
     
     s = p.search(text)
+    
     if s is not None:
+        print(s)
         text = text[:s.span()[1]]
 
     p2 = re.compile(r'(지하)?\s?[0-9]+') # (지하) #### 인 경우 잡기
@@ -95,6 +97,13 @@ def post_processing(text):
     
     if s2:
         text = "답 없음"
+    
+    p3 = re.compile(r"([가-힣0-9]+(로|길)\s?([가-힣0-9]+(번)?길)?\s?)?(지하\s?)?[0-9]+(-[0-9]+)?") # 세부 지명을 알 수 없는 경우 잡기 통일로만 있는 경우
+    s3 = p3.search(text)
+    if s3 is None:
+        text = "답 없음"
+    
+    text = re.sub(r"[0-9]+가", ' ', text)
     
     return text
 
@@ -156,19 +165,25 @@ def inference(input):
     2. There may be a typo in the place name, as shown in the following example. SOUL is a typo of Seoul.
     requestAddress : B 101, Sejong-daero, Jung-gu, SOUL -> requestAddress : 서울특별시 중구 세종대로 지하101
     
-    3. -ro, -daero is interpreted as "로", "대로". In Seocho Police Station in front of the house, 179, Banpo-daero, Seocho-gu, Seoul, Banpo-daero means "반포대로". Most geographical names are translated as they are pronounced in English.
+    3. -ro, -daero is interpreted as "로", "대로". In Seocho Police Station in front of the house, 179, Banpo-daero, Seocho-gu, Seoul, Banpo-daero means "반포대로". Most geographical names are translated as they are pronounced in English. G is usually pronounced as 'ㄱ', but it can also be pronounced as 'ㅈ' depending on the situation
     requestAddress : Jongno Tax Office, 22, Samil-daero 30-gil, Jongno-gu, Seoul노크를 3번하고 열려라 참깨를 외쳐주세요 -> requestAddress : 서울특별시 종로구 삼일대로30길 22    
-
+    requestAddress : B 2, Sejong-daero, Gung-gu, Seoul -> requestAddress : 서울특별시 중구 세종대로 지하2
+    requestAddress : B 300, Wangsimni-ro, Seongdong구, Seoul -> requestAddress : 서울특별시 성동구 왕십리로 지하300
+    requestAddress : Gwangyang 세관 House, 22, Jungdong-ro, Gwangyang-si, Jeollanam-do -> requestAddress : 전라남도 광양시 중동로 22
+    
     4. Words translated into English, such as "South Mountain" and "Ring-ro," may exist. This corresponds to "남산","순환로" respectively
     requestAddress : Gwangju Regional Joint Government Complex, 43, Advanced Science and Technology Road 208beon-gil, Buk-gu, Gwangju1001ho1001동 -> requestAddress : 광주광역시 북구 첨단과기로208번길 43
 
-    5. Do not translate detailed address information such as the unit/floor/apartment number. Delete detailed address information.
-    requestAddress : Dongdaemun Police Station, 29, Yaknyeongsi-ro 21-gil, Dongdaemun-gu, Seoul문서수발실 -> requestAddress : 서울특별시 동대문구 약령시로21길 29
-    requestAddress : B1721, Nambu Ring-ro, Gwanak-gu, Seoul 김&장 -> requestAddress : 서울특별시 관악구 남부순환로 지하1721
-    requestAddress : 86, Yongdap-gil, Seongdong-gu, Seoul customs office 100% -> requestAddress : 서울특별시 성동구 용답길 86
-    requestAddress : B 93, Wangsan-ro, Dongdaemun-gu, Seoul 1001ho1001동 -> requestAddress : 서울특별시 동대문구 왕산로 지하93
+    5. You only need to interpret the words in the data to be translated. You don't have to fill it randomly.
+    In the example below, Pelase translate Seoul -> "서울특별시", Jongno-gu -> "종로구", 359 -> 359 and the result is "서울특별시 종로구 359".
+    requestAddress : 359 Jongno-gu, Jongno-gu, Seoul 101동 -> requestAddress : 서울특별시 종로구 359
+    requestAddress : B, 1822 김&장 -> requestAddress : 지하 1822
+    
+    6. If "B", "G/F", "GF", "지하", "underground" or "G" exists in the unstructured address, they mean underground. And change them to "지하" and get rid of them. If there's an underground meaning, please mark "지하"
+    requestAddress : 127, B, Seosomun-ro, Jung-gu, 새울 -> requestAddress : 서울특별시 중구 서소문로 지하127
+    requestAddress : GF160, Yanghwa-ro, 마포-gu, Seoul -> requestAddress : 서울특별시 마포구 양화로 지하160
 
-
+    
     |End of Rule|
 
     You don't have to print out the sample, just output answer.
