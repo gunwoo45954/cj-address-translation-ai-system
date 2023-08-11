@@ -81,7 +81,11 @@ def pre_processing(text):
 
 def post_processing(text):
     text = re.sub(r'[bB]', '', text)
-    p = re.compile(r'(([가-힣0-9]+로[^가-힣]\s*([0-9]{1,5}(번)?\s*길)?|길))?\s*(지하)?\s*[0-9]{1,5}(-[0-9]{1,5})?')
+    
+    # 수정 부분 : 서울특별시 관악구 관악로5길 33 -> "서울특별시 관악구 관악로5 처리되는 부분 수정
+    text = re.sub(r',','',text)
+    p = re.compile(r'[가-힣0-9]+(로|길)\s*([0-9]+번?\s*길)?\s*(지하)?\s*[0-9]+(-[0-9]+)?')
+    
     s = p.search(text)
     if s is not None:
         text = text[:s.span()[1]]
