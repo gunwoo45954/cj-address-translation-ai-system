@@ -133,7 +133,11 @@ def validate_json(data, schema):
         print(f"The JSON structure is not valid: {e}")
         state = False
     return state
-  
+
+# 탬플릿 수정
+# -ro, dae-ro 못맞추는 경우가 허다해서 그에 대한 내용 추가
+# 주소만으로 맞출 수 없는 괄호 제거
+# 으뜸로 대신 순환로로 설명 수정
 def inference(input):
     template = """
     |Start of task|
@@ -146,20 +150,23 @@ def inference(input):
     |Start of Rule|
     There are some rules when you translate.
     1. Addresses and requests may be mixed. The request may be in front of or behind the address. In the example below, "문 앞 배관실 넣어주세요" corresponds to the request. Delete requests.
-    requestAddress : Incheon Tax Office, 75, Ugak-ro, Dong-gu, Incheon 문 앞 배관실 넣어주세요 -> requestAddress : 인천광역시 동구 우각로 75 (창영동)
-    requestAddress : 배송전 전화주세요Jungbu Tax Office, 170, Toegye-ro, Jung-gu, Seoul -> requestAddress : 서울특별시 중구 퇴계로 170 (남학동)
+    requestAddress : Incheon Tax Office, 75, Ugak-ro, Dong-gu, Incheon 문 앞 배관실 넣어주세요 -> requestAddress : 인천광역시 동구 우각로 75
+    requestAddress : 배송전 전화주세요Jungbu Tax Office, 170, Toegye-ro, Jung-gu, Seoul -> requestAddress : 서울특별시 중구 퇴계로 170
 
     2. There may be a typo in the place name, as shown in the following example. SOUL is a typo of Seoul.
-    requestAddress : B 101, Sejong-daero, Jung-gu, SOUL -> requestAddress : 서울특별시 중구 세종대로 지하101 (정동)
+    requestAddress : B 101, Sejong-daero, Jung-gu, SOUL -> requestAddress : 서울특별시 중구 세종대로 지하101
+    
+    3. -ro, -daero is interpreted as "로", "대로". In Seocho Police Station in front of the house, 179, Banpo-daero, Seocho-gu, Seoul, Banpo-daero means "반포대로". Most geographical names are translated as they are pronounced in English.
+    requestAddress : Jongno Tax Office, 22, Samil-daero 30-gil, Jongno-gu, Seoul노크를 3번하고 열려라 참깨를 외쳐주세요 -> requestAddress : 서울특별시 종로구 삼일대로30길 22    
 
-    3. Words translated into English, such as "South Mountain" and "Best-ro," may exist. This corresponds to "남산","으뜸로" respectively
-    requestAddress : Gwangju Regional Joint Government Complex, 43, Advanced Science and Technology Road 208beon-gil, Buk-gu, Gwangju1001ho1001동 -> requestAddress : 광주광역시 북구 첨단과기로208번길 43 (오룡동)
+    4. Words translated into English, such as "South Mountain" and "Ring-ro," may exist. This corresponds to "남산","순환로" respectively
+    requestAddress : Gwangju Regional Joint Government Complex, 43, Advanced Science and Technology Road 208beon-gil, Buk-gu, Gwangju1001ho1001동 -> requestAddress : 광주광역시 북구 첨단과기로208번길 43
 
-    4. Do not translate detailed address information such as the unit/floor/apartment number. Delete detailed address information.
-    requestAddress : Dongdaemun Police Station, 29, Yaknyeongsi-ro 21-gil, Dongdaemun-gu, Seoul문서수발실 -> requestAddress : 서울특별시 동대문구 약령시로21길 29 (청량리동)
-    requestAddress : B1721, Nambu Ring-ro, Gwanak-gu, Seoul 김&장 -> requestAddress : 서울특별시 관악구 남부순환로 지하1721 (봉천동)
-    requestAddress : 86, Yongdap-gil, Seongdong-gu, Seoul customs office 100% -> requestAddress : 서울특별시 성동구 용답길 86 (용답동)
-    requestAddress : B 93, Wangsan-ro, Dongdaemun-gu, Seoul 1001ho1001동 -> requestAddress : 서울특별시 동대문구 왕산로 지하93 (제기동)
+    5. Do not translate detailed address information such as the unit/floor/apartment number. Delete detailed address information.
+    requestAddress : Dongdaemun Police Station, 29, Yaknyeongsi-ro 21-gil, Dongdaemun-gu, Seoul문서수발실 -> requestAddress : 서울특별시 동대문구 약령시로21길 29
+    requestAddress : B1721, Nambu Ring-ro, Gwanak-gu, Seoul 김&장 -> requestAddress : 서울특별시 관악구 남부순환로 지하1721
+    requestAddress : 86, Yongdap-gil, Seongdong-gu, Seoul customs office 100% -> requestAddress : 서울특별시 성동구 용답길 86
+    requestAddress : B 93, Wangsan-ro, Dongdaemun-gu, Seoul 1001ho1001동 -> requestAddress : 서울특별시 동대문구 왕산로 지하93
 
 
     |End of Rule|
