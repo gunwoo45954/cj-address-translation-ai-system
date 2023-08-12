@@ -187,10 +187,10 @@ def inference(input):
     Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
     
     In the example below, Pelase translate Seoul -> "서울특별시", Jongno-gu -> "종로구", 359 -> 359 and the result is "서울특별시 종로구 359".
-    requestAddress : 359 Jongno-gu Jongno-gu Seoul 101동 -> requestAddress : 서울특별시 종로구 359 if You Answer requestAddress : 관악구 지하1822 is wrong. Because No information has been given about "관악구".
-    You should answer with "지하 1822 or "지하 1822 김 장"
-    requestAddress : 지하 1822 김 장 -> requestAddress : 지하 1822   
-    
+    In second example, if You Answer requestAddress : (서울특별시)관악구 지하1822 is wrong. Because No information has been given about "서울특별시" and "관악구". Right answer is "지하 1822 or "지하 1822 김 장"
+    requestAddress : 359 Jongno-gu Jongno-gu Seoul 101동 -> requestAddress : 서울특별시 종로구 359 
+    requestAddress : 지하 1822 김 장 -> requestAddress : 지하 1822 김 장
+
     6. If "지하","B", "underground" or others exists in the unstructured address, they mean underground. If there's an underground meaning, please mark "지하"
     If you don't have a word that means underground, you don't add it.
     requestAddress : 127 지하 Seosomun-ro Jung-gu 새울 -> requestAddress : 서울특별시 중구 서소문로 지하127
