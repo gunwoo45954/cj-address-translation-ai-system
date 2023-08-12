@@ -84,12 +84,11 @@ def post_processing(text):
     
     # 수정 부분 : 서울특별시 관악구 관악로5길 33 -> "서울특별시 관악구 관악로5 처리되는 부분 수정
     text = re.sub(r',','',text)
-    p = re.compile(r'([가-힣0-9]+(로|길)\s*([0-9]+번?\s*(길|가)\s*)?)?(지하)?\s*[0-9]+(-[0-9]+)?(가|번?길|로)?\s?(지하)?')
+    p = re.compile(r'([가-힣0-9]+(로|길)\s*([0-9]+번?\s*(길|가)\s*)?)?(지하)?\s*[0-9]+(-[0-9]+)?(가|번?길|로)?\s?(지하)?([가-힣0-9]+(로|길)\s*([0-9]+번?\s*(길|가)\s*)?)?')
     
     s = p.search(text)
     
     if s is not None:
-        print(s)
         text = text[:s.span()[1]]
 
     p2 = re.compile(r'(지하)?\s?[0-9]+') # (지하) #### 인 경우 잡기
@@ -179,10 +178,12 @@ def inference(input):
     requestAddress : 359 Jongno-gu, Jongno-gu, Seoul 101동 -> requestAddress : 서울특별시 종로구 359
     requestAddress : B, 1822 김&장 -> requestAddress : 지하 1822
     
-    6. If "B", "G/F", "GF", "지하", "underground" or "G" exists in the unstructured address, they mean underground. And change them to "지하" and get rid of them. If there's an underground meaning, please mark "지하"
-    requestAddress : 127, B, Seosomun-ro, Jung-gu, 새울 -> requestAddress : 서울특별시 중구 서소문로 지하127
-    requestAddress : GF160, Yanghwa-ro, 마포-gu, Seoul -> requestAddress : 서울특별시 마포구 양화로 지하160
-
+    6. If "지하","B", "underground" or others exists in the unstructured address, they mean underground. If there's an underground meaning, please mark "지하"
+    If you don't have a word that means underground, you don't add it.
+    requestAddress : 127 지하 Seosomun-ro Jung-gu 새울 -> requestAddress : 서울특별시 중구 서소문로 지하127
+    requestAddress : GF160 Yanghwa-ro 마포-gu, Seoul -> requestAddress : 서울특별시 마포구 양화로 지하160
+    requestAddress : Daelim-ro 2, Dongjak-gu, Seoul 100 office -> requestAddress : 서울특별시 동작구 대림로 2
+    
     
     |End of Rule|
 
@@ -195,17 +196,17 @@ def inference(input):
     """
 
     # 전처리 추가
-    data = dict()
-    data["requestList"] = [{"seq":i["seq"],"requestAddress":pre_processing(i["requestAddress"])}for i in input["requestList"]]
-    print("전처리 후 결과")
-    print(data)
+    pre_data = dict()
+    pre_data["requestList"] = [{"seq":i["seq"],"requestAddress":pre_processing(i["requestAddress"])}for i in input["requestList"]]
+
+    
     state = False
     while(not state):
         prompt = PromptTemplate(
         input_variables=["Address_Input", "output_schema"],
         template=template,
         )
-        prompt = prompt.format(Address_Input=data, output_schema=result_schema)   
+        prompt = prompt.format(Address_Input=pre_data, output_schema=result_schema)   
         llm = OpenAI(model_name="gpt-3.5-turbo-16k")
         result = llm(prompt)
         
@@ -215,10 +216,12 @@ def inference(input):
         result = json.loads(result)
         
         state = validate_json(result, result_schema)
-    print("chat gpt 실행 후 결과")
-    print(result)
-    temp = dict()
-    temp["resultList"] = [{'seq': i["seq"], 'requestAddress' : post_processing(i["requestAddress"])} for i in result["resultList"]]
-    print("후처리 이후 데이터")
-    print(temp)
-    return temp
+    
+
+    post_data = dict()
+    post_data["resultList"] = [{'seq': i["seq"], 'requestAddress' : post_processing(i["requestAddress"])} for i in result["resultList"]]
+    
+    for i,j,k in zip(pre_data['requestList'],result['resultList'],post_data['resultList']):
+        print('%-3s %s \nchatgpt : %-30s 후처리 : %-30s' %(i["seq"], i["requestAddress"], j["requestAddress"], k["requestAddress"]))
+        print()
+    return post_data
