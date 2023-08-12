@@ -84,8 +84,7 @@ def post_processing(text):
     
     # 수정 부분 : 서울특별시 관악구 관악로5길 33 -> "서울특별시 관악구 관악로5 처리되는 부분 수정
     text = re.sub(r',','',text)
-    p = re.compile(r'([가-힣0-9]+(로|길)\s*([0-9]+번?\s*(길|가)\s*)?)?(지하)?\s*[0-9]+(-[0-9]+)?(가|번?길|로)?\s?(지하)?([가-힣0-9]+(로|길)\s*([0-9]+번?\s*(길|가)\s*)?)?')
-    
+    p = re.compile(r'([가-힣0-9]+(로|길)\s*([0-9]+번?\s*(길|가)\s*)?)?(지하)?\s*[0-9]+(-[0-9]+)?(가|번?길|로)?\s?(지하)?')
     s = p.search(text)
     
     if s is not None:
@@ -98,10 +97,16 @@ def post_processing(text):
         if text[s2.start():s2.end()] == text.strip():
             text = "답 없음"
     
-    # p3 = re.compile(r"([가-힣0-9]+(로|길)\s?([가-힣0-9]+(번)?길)?\s?)?(지하\s?)?[0-9]+(-[0-9]+)?") # 세부 지명을 알 수 없는 경우 잡기 통일로만 있는 경우
-    # s3 = p3.search(text)
-    # if s3 is None:
-    #     text = "답 없음"
+    # 을지로1가 -> 을지로 1가
+    p3 = re.compile(r'[0-9]+가')
+    s3 = p3.search(text)
+    if s3:
+        match = text[s3.start():s3.end()]
+        text = re.sub(match," "+match,text)
+    
+    
+    
+    text = re.sub(r"\s+"," ",text).strip()
     
     
     return text
@@ -157,16 +162,6 @@ def inference(input):
     Please create the correct answer according to seq. The correct answer to each question is not related to the correct answer to the other question.
     Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
     
-    In the example below, Pelase translate Seoul -> "서울특별시", Jongno-gu -> "종로구", 359 -> 359 and the result is "서울특별시 종로구 359".
-    requestAddress : 359 Jongno-gu Jongno-gu Seoul 101동 -> requestAddress : 서울특별시 종로구 359
-    requestAddress : 지하 1822 김 장 -> requestAddress : 지하 1822   
-    if You Answer requestAddress : 서울특별시 관악구 지하1822 is wrong. Because No information has been given about "서울특별시" and "관악구".
-    if You Answer requestAddress : 관악구 지하1822 is wrong. Because No information has been given about "관악구".
-    You should answer with "지하 1822 or "지하 1822 김 장"
-    requestAddress :  Cheonho-daero 지하12129 Seoul (Yongdu-dong) -> requestAddress : 서울특별시 천호대로 지하12129
-    requestAddress : Jingwan 2-ro 15-25B Seoul (Jingwan-dong) -> requestAddress : 서울특별시 진관2로 지하15-25   
-    if You Answer requestAddress : 서울특별시 영등포구 진관2로 15-25 지하 - No information has been given about "영등포구"
-    
     |End of task|
 
     |Start of Rule|
@@ -192,14 +187,9 @@ def inference(input):
     Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
     
     In the example below, Pelase translate Seoul -> "서울특별시", Jongno-gu -> "종로구", 359 -> 359 and the result is "서울특별시 종로구 359".
-    requestAddress : 359 Jongno-gu Jongno-gu Seoul 101동 -> requestAddress : 서울특별시 종로구 359
-    requestAddress : 지하 1822 김 장 -> requestAddress : 지하 1822   
-    if You Answer requestAddress : 서울특별시 관악구 지하1822 is wrong. Because No information has been given about "서울특별시" and "관악구".
-    if You Answer requestAddress : 관악구 지하1822 is wrong. Because No information has been given about "관악구".
+    requestAddress : 359 Jongno-gu Jongno-gu Seoul 101동 -> requestAddress : 서울특별시 종로구 359 if You Answer requestAddress : 관악구 지하1822 is wrong. Because No information has been given about "관악구".
     You should answer with "지하 1822 or "지하 1822 김 장"
-    requestAddress :  Cheonho-daero 지하12129 Seoul (Yongdu-dong) -> requestAddress : 서울특별시 천호대로 지하12129
-    requestAddress : Jingwan 2-ro 15-25B Seoul (Jingwan-dong) -> requestAddress : 서울특별시 진관2로 지하15-25   
-    if You Answer requestAddress : 서울특별시 영등포구 진관2로 15-25 지하 - No information has been given about "영등포구"
+    requestAddress : 지하 1822 김 장 -> requestAddress : 지하 1822   
     
     6. If "지하","B", "underground" or others exists in the unstructured address, they mean underground. If there's an underground meaning, please mark "지하"
     If you don't have a word that means underground, you don't add it.
@@ -209,35 +199,16 @@ def inference(input):
     
     |End of Rule|
 
-    |Start of Important points|
-    
-    - You don't have to print out the sample, just output answer.
+
+
+
+    - You should write all the answers in Korean. There should be no less translated parts of English.    
     - You only need to interpret the words in the data to be translated. Only derive the result from the translation of requestAddress, you should not put any additional information.
     Please create the correct answer according to seq. The correct answer to each question is not related to the correct answer to the other question.
     Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
-    - You only need to interpret the words in the data to be translated. Only derive the result from the translation of requestAddress, you should not put any additional information.
-    Please create the correct answer according to seq. The correct answer to each question is not related to the correct answer to the other question.
-    Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
-    
-    In the example below, Pelase translate Seoul -> "서울특별시", Jongno-gu -> "종로구", 359 -> 359 and the result is "서울특별시 종로구 359".
-    requestAddress : 359 Jongno-gu Jongno-gu Seoul 101동 -> requestAddress : 서울특별시 종로구 359
-    requestAddress : 지하 1822 김 장 -> requestAddress : 지하 1822   
-    if You Answer requestAddress : 서울특별시 관악구 지하1822 is wrong. Because No information has been given about "서울특별시" and "관악구".
-    if You Answer requestAddress : 관악구 지하1822 is wrong. Because No information has been given about "관악구".
-    You should answer with "지하 1822 or "지하 1822 김 장"
-    requestAddress :  Cheonho-daero 지하12129 Seoul (Yongdu-dong) -> requestAddress : 서울특별시 천호대로 지하12129
-    requestAddress : Jingwan 2-ro 15-25B Seoul (Jingwan-dong) -> requestAddress : 서울특별시 진관2로 지하15-25   
-    if You Answer requestAddress : 서울특별시 영등포구 진관2로 15-25 지하 - No information has been given about "영등포구"
-    
-    - You should write all the answers in Korean. There should be no less translated parts of English.
-    
-    |End of Important points|
-    
     
     Input:
     {Address_Input}
-
-    Output: 
     """
 
     # 전처리 추가
@@ -246,13 +217,15 @@ def inference(input):
 
     
     state = False
+
     while(not state):
         prompt = PromptTemplate(
         input_variables=["Address_Input", "output_schema"],
         template=template,
         )
         prompt = prompt.format(Address_Input=pre_data, output_schema=result_schema)   
-        llm = OpenAI(model_name="gpt-3.5-turbo-16k")
+        llm = OpenAI(model_name="gpt-3.5-turbo")
+
         result = llm(prompt)
         
         result = re.sub(r'\n',' ',result)
