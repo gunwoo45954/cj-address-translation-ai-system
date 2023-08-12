@@ -1,5 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
+import re
 
 def get_address(api_key, word):
     url = f'https://business.juso.go.kr/addrlink/addrLinkApi.do?currentPage=1&countPerPage%20=10&keyword={word}&confmKey={api_key}&hstryYn=Y&firstSort=road'
@@ -20,22 +21,11 @@ def get_address(api_key, word):
     # 결과는 여러 개가 나오는데 검색어와 1번째 결과가 일치하는 경우. 나머지 결과들은 다름.
     # 문제점 : 검색어와 1번째 결과가 조금 달라서 "답 없음"처리가 되는 경우. 이 경우에는 1번째 결과가 정답인 경우임.
     if (len(data) > 1):
-
-        # data[1]에서 ()를 없앤 문자열이매칭되는지 검색 -> 매칭되면 data[0] 사용 아니라면 답 없음
+        address_1 = re.sub('\([^\)]+\)','',data[0]).strip()
+        address_2 = re.sub('\([^\)]+\)','',data[1]).strip()
         
-        # 되는 경우
-        # data[0] = 서울특별시 서대문구 통일로 81 (미근동) 
-        # data[1] = 서울특별시 서대문구 통일로 83-1 (미근동) 인경우
-        # 서울특별시 서대문구 통일로 81
-        
-        # 안되는 경우
-        # data[0] = 서울특별시 서대문구 통일로 81 (미근동) 
-        # data[1] = 서울특별시 서대문구 통일로 87 (미근동) 인경우
-        # 서울특별시 서대문구 통일로 81가 매칭되지 않음 -> 답없음
-        
-        if data[0].split()[-3] not in data[1].split()[-3]:
+        if address_1.split()[-2] not in address_2.split()[-2]:
             data = ["답 없음"]
-        elif data[0].split()[-2] not in data[1].split()[-2]:
+        elif address_1.split()[-1] not in address_2.split()[-1]:
             data = ["답 없음"]
-            
     return data[0]
