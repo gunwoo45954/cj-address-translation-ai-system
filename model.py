@@ -6,6 +6,10 @@ from langchain import PromptTemplate
 from langchain.llms import OpenAI
 
 def pre_processing(text):
+    
+    # ',' -> ' '
+    text = re.sub(r',',' ',text)
+    text = re.sub(r'100%','',text)
     text = re.sub(r"(대한민국|Republic of Korea)"," ",text)
 
     text = re.sub(r"-(do|도)","-do ",text)
@@ -13,7 +17,7 @@ def pre_processing(text):
     text = re.sub(r"-(gu|구)","-gu ",text)
     text = re.sub(r"-(ro|로)","-ro ",text)
     
-    text = re.sub(r"[\!\?@#$\^&*]",'',text)
+    text = re.sub(r"[\!\?@#$\^&*]",' ',text)
 
     # 문앞 집앞
     text = re.sub(r'문\s*앞',' ',text)
@@ -73,16 +77,17 @@ def pre_processing(text):
     
 
     text = re.sub(r"\s+"," ",text).strip()            
-    
-    text = re.sub(' ,',",",text)
-    text = re.sub(",$",' ',text)
 
     return text
-
 def post_processing(text):
-    text = re.sub(r'[bB]', '', text)
-    p = re.compile(r'(([가-힣0-9]+로[^가-힣]\s*([0-9]{1,5}(번)?\s*길)?|길))?\s*(지하)?\s*[0-9]{1,5}(-[0-9]{1,5})?')
+    text = re.sub(r'[bB]', ' 지하 ', text)
+    
+    # 수정 부분 : 서울특별시 관악구 관악로5길 33 -> "서울특별시 관악구 관악로5 처리되는 부분 수정
+    text = re.sub(r',','',text)
+    p = re.compile(r'([가-힣0-9]+(로|길)\s*([0-9]+번?\s*(길|가)\s*)?)?(지하)?\s*[0-9]+(-[0-9]+)?(가|번?길|로)?\s?(지하)?([가-힣0-9]+(로|길)\s*([0-9]+번?\s*(길|가)\s*)?)?')
+    
     s = p.search(text)
+    
     if s is not None:
         text = text[:s.span()[1]]
 
@@ -90,7 +95,14 @@ def post_processing(text):
     s2 = p2.match(text)
     
     if s2:
-        text = "답 없음"
+        if text[s2.start():s2.end()] == text.strip():
+            text = "답 없음"
+    
+    # p3 = re.compile(r"([가-힣0-9]+(로|길)\s?([가-힣0-9]+(번)?길)?\s?)?(지하\s?)?[0-9]+(-[0-9]+)?") # 세부 지명을 알 수 없는 경우 잡기 통일로만 있는 경우
+    # s3 = p3.search(text)
+    # if s3 is None:
+    #     text = "답 없음"
+    
     
     return text
 
@@ -129,39 +141,99 @@ def validate_json(data, schema):
         print(f"The JSON structure is not valid: {e}")
         state = False
     return state
-  
+
+# 탬플릿 수정
+# -ro, dae-ro 못맞추는 경우가 허다해서 그에 대한 내용 추가
+# 주소만으로 맞출 수 없는 괄호 제거
+# 으뜸로 대신 순환로로 설명 수정
 def inference(input):
     template = """
     |Start of task|
     - You will work on translating a non-refined address in English into refined Korean. 
     - Unrestricted English addresses can only be made in English or mixed with Korean.
     - Output are in json, generate an json that adheres to the schema {output_schema} and the translation is carried out according to the Rule.
-
+    - You should write all the answers in Korean. There should be no less translated parts of English.
+    - You only need to interpret the words in the data to be translated. Only derive the result from the translation of requestAddress, you should not put any additional information.
+    Please create the correct answer according to seq. The correct answer to each question is not related to the correct answer to the other question.
+    Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
+    
+    In the example below, Pelase translate Seoul -> "서울특별시", Jongno-gu -> "종로구", 359 -> 359 and the result is "서울특별시 종로구 359".
+    requestAddress : 359 Jongno-gu Jongno-gu Seoul 101동 -> requestAddress : 서울특별시 종로구 359
+    requestAddress : 지하 1822 김 장 -> requestAddress : 지하 1822   
+    if You Answer requestAddress : 서울특별시 관악구 지하1822 is wrong. Because No information has been given about "서울특별시" and "관악구".
+    if You Answer requestAddress : 관악구 지하1822 is wrong. Because No information has been given about "관악구".
+    You should answer with "지하 1822 or "지하 1822 김 장"
+    requestAddress :  Cheonho-daero 지하12129 Seoul (Yongdu-dong) -> requestAddress : 서울특별시 천호대로 지하12129
+    requestAddress : Jingwan 2-ro 15-25B Seoul (Jingwan-dong) -> requestAddress : 서울특별시 진관2로 지하15-25   
+    if You Answer requestAddress : 서울특별시 영등포구 진관2로 15-25 지하 - No information has been given about "영등포구"
+    
     |End of task|
 
     |Start of Rule|
     There are some rules when you translate.
     1. Addresses and requests may be mixed. The request may be in front of or behind the address. In the example below, "문 앞 배관실 넣어주세요" corresponds to the request. Delete requests.
-    requestAddress : Incheon Tax Office, 75, Ugak-ro, Dong-gu, Incheon 문 앞 배관실 넣어주세요 -> requestAddress : 인천광역시 동구 우각로 75 (창영동)
-    requestAddress : 배송전 전화주세요Jungbu Tax Office, 170, Toegye-ro, Jung-gu, Seoul -> requestAddress : 서울특별시 중구 퇴계로 170 (남학동)
+    requestAddress : Incheon Tax Office, 75, Ugak-ro, Dong-gu, Incheon 문 앞 배관실 넣어주세요 -> requestAddress : 인천광역시 동구 우각로 75
+    requestAddress : 배송전 전화주세요Jungbu Tax Office, 170, Toegye-ro, Jung-gu, Seoul -> requestAddress : 서울특별시 중구 퇴계로 170
 
     2. There may be a typo in the place name, as shown in the following example. SOUL is a typo of Seoul.
-    requestAddress : B 101, Sejong-daero, Jung-gu, SOUL -> requestAddress : 서울특별시 중구 세종대로 지하101 (정동)
+    requestAddress : B 101, Sejong-daero, Jung-gu, SOUL -> requestAddress : 서울특별시 중구 세종대로 지하101
+    
+    3. -ro, -daero is interpreted as "로", "대로". In Seocho Police Station in front of the house, 179, Banpo-daero, Seocho-gu, Seoul, Banpo-daero means "반포대로". Most geographical names are translated as they are pronounced in English. G is usually pronounced as 'ㄱ', but it can also be pronounced as 'ㅈ' depending on the situation
+    requestAddress : Jongno Tax Office 22, Samil-daero 30-gil Jongno-gu Seoul노크를 3번하고 열려라 참깨를 외쳐주세요 -> requestAddress : 서울특별시 종로구 삼일대로30길 22    
+    requestAddress : 지하 2 Sejong-daero Gung-gu Seoul -> requestAddress : 서울특별시 중구 세종대로 지하2
+    requestAddress : 지하 300 Wangsimni-ro Seongdong구 Seoul -> requestAddress : 서울특별시 성동구 왕십리로 지하300
+    requestAddress : Gwangyang 세관 House 22 Jungdong-ro Gwangyang-si Jeollanam-do -> requestAddress : 전라남도 광양시 중동로 22
+    
+    4. Words translated into English, such as "South Mountain" and "Ring-ro," may exist. This corresponds to "남산","순환로" respectively
+    requestAddress : Gwangju Regional Joint Government Complex 43 Advanced Science and Technology Road 208beon-gil Buk-gu Gwangju1001ho1001동 -> requestAddress : 광주광역시 북구 첨단과기로208번길 43
 
-    3. Words translated into English, such as "South Mountain" and "Best-ro," may exist. This corresponds to "남산","으뜸로" respectively
-    requestAddress : Gwangju Regional Joint Government Complex, 43, Advanced Science and Technology Road 208beon-gil, Buk-gu, Gwangju1001ho1001동 -> requestAddress : 광주광역시 북구 첨단과기로208번길 43 (오룡동)
-
-    4. Do not translate detailed address information such as the unit/floor/apartment number. Delete detailed address information.
-    requestAddress : Dongdaemun Police Station, 29, Yaknyeongsi-ro 21-gil, Dongdaemun-gu, Seoul문서수발실 -> requestAddress : 서울특별시 동대문구 약령시로21길 29 (청량리동)
-    requestAddress : B1721, Nambu Ring-ro, Gwanak-gu, Seoul 김&장 -> requestAddress : 서울특별시 관악구 남부순환로 지하1721 (봉천동)
-    requestAddress : 86, Yongdap-gil, Seongdong-gu, Seoul customs office 100% -> requestAddress : 서울특별시 성동구 용답길 86 (용답동)
-    requestAddress : B 93, Wangsan-ro, Dongdaemun-gu, Seoul 1001ho1001동 -> requestAddress : 서울특별시 동대문구 왕산로 지하93 (제기동)
-
-
+    5. You only need to interpret the words in the data to be translated. Only derive the result from the translation of requestAddress, you should not put any additional information.
+    Please create the correct answer according to seq. The correct answer to each question is not related to the correct answer to the other question.
+    Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
+    
+    In the example below, Pelase translate Seoul -> "서울특별시", Jongno-gu -> "종로구", 359 -> 359 and the result is "서울특별시 종로구 359".
+    requestAddress : 359 Jongno-gu Jongno-gu Seoul 101동 -> requestAddress : 서울특별시 종로구 359
+    requestAddress : 지하 1822 김 장 -> requestAddress : 지하 1822   
+    if You Answer requestAddress : 서울특별시 관악구 지하1822 is wrong. Because No information has been given about "서울특별시" and "관악구".
+    if You Answer requestAddress : 관악구 지하1822 is wrong. Because No information has been given about "관악구".
+    You should answer with "지하 1822 or "지하 1822 김 장"
+    requestAddress :  Cheonho-daero 지하12129 Seoul (Yongdu-dong) -> requestAddress : 서울특별시 천호대로 지하12129
+    requestAddress : Jingwan 2-ro 15-25B Seoul (Jingwan-dong) -> requestAddress : 서울특별시 진관2로 지하15-25   
+    if You Answer requestAddress : 서울특별시 영등포구 진관2로 15-25 지하 - No information has been given about "영등포구"
+    
+    6. If "지하","B", "underground" or others exists in the unstructured address, they mean underground. If there's an underground meaning, please mark "지하"
+    If you don't have a word that means underground, you don't add it.
+    requestAddress : 127 지하 Seosomun-ro Jung-gu 새울 -> requestAddress : 서울특별시 중구 서소문로 지하127
+    requestAddress : GF160 Yanghwa-ro 마포-gu Seoul -> requestAddress : 서울특별시 마포구 양화로 지하160
+    requestAddress : Daelim-ro 2 Dongjak-gu Seoul 100 office -> requestAddress : 서울특별시 동작구 대림로 2
+    
     |End of Rule|
 
-    You don't have to print out the sample, just output answer.
-
+    |Start of Important points|
+    
+    - You don't have to print out the sample, just output answer.
+    - You only need to interpret the words in the data to be translated. Only derive the result from the translation of requestAddress, you should not put any additional information.
+    Please create the correct answer according to seq. The correct answer to each question is not related to the correct answer to the other question.
+    Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
+    - You only need to interpret the words in the data to be translated. Only derive the result from the translation of requestAddress, you should not put any additional information.
+    Please create the correct answer according to seq. The correct answer to each question is not related to the correct answer to the other question.
+    Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
+    
+    In the example below, Pelase translate Seoul -> "서울특별시", Jongno-gu -> "종로구", 359 -> 359 and the result is "서울특별시 종로구 359".
+    requestAddress : 359 Jongno-gu Jongno-gu Seoul 101동 -> requestAddress : 서울특별시 종로구 359
+    requestAddress : 지하 1822 김 장 -> requestAddress : 지하 1822   
+    if You Answer requestAddress : 서울특별시 관악구 지하1822 is wrong. Because No information has been given about "서울특별시" and "관악구".
+    if You Answer requestAddress : 관악구 지하1822 is wrong. Because No information has been given about "관악구".
+    You should answer with "지하 1822 or "지하 1822 김 장"
+    requestAddress :  Cheonho-daero 지하12129 Seoul (Yongdu-dong) -> requestAddress : 서울특별시 천호대로 지하12129
+    requestAddress : Jingwan 2-ro 15-25B Seoul (Jingwan-dong) -> requestAddress : 서울특별시 진관2로 지하15-25   
+    if You Answer requestAddress : 서울특별시 영등포구 진관2로 15-25 지하 - No information has been given about "영등포구"
+    
+    - You should write all the answers in Korean. There should be no less translated parts of English.
+    
+    |End of Important points|
+    
+    
     Input:
     {Address_Input}
 
@@ -169,17 +241,17 @@ def inference(input):
     """
 
     # 전처리 추가
-    data = dict()
-    data["requestList"] = [{"seq":i["seq"],"requestAddress":pre_processing(i["requestAddress"])}for i in input["requestList"]]
-    print("전처리 후 결과")
-    print(data)
+    pre_data = dict()
+    pre_data["requestList"] = [{"seq":i["seq"],"requestAddress":pre_processing(i["requestAddress"])}for i in input["requestList"]]
+
+    
     state = False
     while(not state):
         prompt = PromptTemplate(
         input_variables=["Address_Input", "output_schema"],
         template=template,
         )
-        prompt = prompt.format(Address_Input=data, output_schema=result_schema)   
+        prompt = prompt.format(Address_Input=pre_data, output_schema=result_schema)   
         llm = OpenAI(model_name="gpt-3.5-turbo-16k")
         result = llm(prompt)
         
@@ -189,10 +261,12 @@ def inference(input):
         result = json.loads(result)
         
         state = validate_json(result, result_schema)
-    print("chat gpt 실행 후 결과")
-    print(result)
-    temp = dict()
-    temp["resultList"] = [{'seq': i["seq"], 'requestAddress' : post_processing(i["requestAddress"])} for i in result["resultList"]]
-    print("후처리 이후 데이터")
-    print(temp)
-    return temp
+    
+
+    post_data = dict()
+    post_data["resultList"] = [{'seq': i["seq"], 'requestAddress' : post_processing(i["requestAddress"]),'ChatGPTAddress' : i["requestAddress"]} for i in result["resultList"]]
+    
+    for i,j,k in zip(pre_data['requestList'],result['resultList'],post_data['resultList']):
+        print('%-3s %s \nchatgpt : %-30s 후처리 : %-30s' %(i["seq"], i["requestAddress"], j["requestAddress"], k["requestAddress"]))
+        print()
+    return post_data

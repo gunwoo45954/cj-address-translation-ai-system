@@ -13,6 +13,8 @@ from model import inference
 import os
 import argparse
 import openai
+from itertools import chain
+import pandas as pd
 
 # 해야 할 일_0810
 # 1. 성공 Response : 해석된 주소, 답 없음 / 실패 Response : 입력 형태 불일치 -> 실패 Response가 동작하기 위해선 오류 코드가 나올 시 대처할 수 있도록 설계. -> seq number만 출력되면 완성 -> 출력가능
@@ -103,39 +105,62 @@ class CustomAPIRoute(APIRoute):
 app = FastAPI()
 custom_router = APIRouter(route_class = CustomAPIRoute)
 
-def chunk_list(lst, chunk_size):
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
 @custom_router.post('/')
 def create_response(item : RequestJSON):
     response = ResponseJSON(HEADER=HeaderItem())
-    request_list = item.requestList
-
-    chunk_size = 30
-    input_data =  [{'seq': i.seq, 'requestAddress': i.requestAddress} for i in request_list]
-    data_chunk = chunk_list(input_data, chunk_size)
-    data_chunk = [{"requestList":i} for i in data_chunk]
-
-    result_list = []
-
-    for idx,chunk in enumerate(data_chunk):
-        result_list += inference(chunk)["resultList"]
-        
-    result_dict = {"requestList":result_list}
-    request_list = RequestJSON(**result_dict)
-    request_list = request_list.requestList
-    body_items = []
-
-    for i in range(len(request_list)):
-        body_item = BodyItem(seq="some_value", resultAddress="some_address")
-        result_address = get_address(api_key, request_list[i].requestAddress)
-        body_item.seq = str(request_list[i].seq)
-        body_item.resultAddress = result_address
-        body_items.append(body_item)
+    chunk_list = lambda lst,chunk_size : [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
     
+    
+    # 청크로 나눠서 inference 한 후 chatgpt_result 반환
+    chunk_size = 30
+    input_data = [dict(i) for i in dict(item)['requestList']]
+    data_chunk = chunk_list(input_data, chunk_size)
+    chatgpt_result = list(chain(*[inference({"requestList":i})["resultList"] for i in data_chunk]))
+
+    
+    # 도로명 주소 api 실행 후
+    api_result = [{"seq":i['seq'],"resultAddress":get_address(api_key,i['requestAddress'])} for i in chatgpt_result]
+
+    
+    print("--------------------------전체 결과-------------------------")
+    for i,j in zip(chatgpt_result,api_result):
+        print('%3s %30s %30s' %(i["seq"], i["requestAddress"], j["resultAddress"]))
+    
+    input_df = pd.DataFrame(input_data)
+    result_df = pd.DataFrame(api_result)
+    
+    # 재시도할 횟수
+    retry = 2
+    for r in range(retry):
+        print(f"--------------------------{r+2}번째 시도-------------------------")
+        no_answer_df =  input_df[result_df['resultAddress']=='답 없음'] # 답 없음으로 나온 결과들 다시 뽑아내기
+        
+        re_input_data = [{'seq':seq,'requestAddress':address} for seq,address in zip(no_answer_df['seq'],no_answer_df['requestAddress'])]
+        
+        re_data_chunk = chunk_list(re_input_data, chunk_size)
+        
+        re_chatgpt_result = list(chain(*[inference({"requestList":i})["resultList"] for i in re_data_chunk]))
+        re_api_result = [{"seq":i['seq'],"resultAddress":get_address(api_key,i['requestAddress'])} for i in re_chatgpt_result]
+        
+        print(f"--------------------------{r+2}번째 결과-------------------------")
+        for i,j in zip(re_chatgpt_result,re_api_result):
+            print('%-3s %-30s %-30s' %(i["seq"], i["requestAddress"], j["resultAddress"]))
+        
+
+        for i in re_api_result:
+            result_df.loc[result_df['seq'] == i['seq'],'resultAddress'] = i['resultAddress']
+        
+        print(f"--------------------------{r+2}번째 결과 데이터 프레임-------------------------")        
+        print(result_df)
+        
+    
+    
+    
+    body_items = [BodyItem(**{'seq':str(seq),'resultAddress':address}) for seq,address in zip(result_df['seq'],result_df['resultAddress'])]
     response.BODY = body_items
-    print("도로명주소api 실행 후")
-    print(response)
+    
+    
     return response
 
 app.include_router(custom_router)
