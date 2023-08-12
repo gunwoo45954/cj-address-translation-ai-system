@@ -76,27 +76,42 @@ class CustomAPIRoute(APIRoute):
         route_handler = super().get_route_handler()
 
         async def custom_route_handler(request: Request) -> Response:
-            try:
-                fail_seq = None
-                # 요청 데이터를 가져오거나 검증하는 로직 추가
-                request_data = await request.json()
-                # request_data 검증 및 처리
-                if not request_data.get("requestList"):
-                    return JSONResponse(content = "requestiList field is not exist.")
+            fail_seq = None
+            # 요청 데이터를 가져오거나 검증하는 로직 추가
+            request_data = await request.json()
+            # request_data 검증 및 처리
+            if not request_data.get("requestList"):
+                return JSONResponse(content = "requestiList field is not exist.")
+            
+            for item in request_data.get("requestList", []):
+                if not isinstance(item.get("seq"), int) or not (1 <= item["seq"] <= 99999999) or not isinstance(item.get("requestAddress"), str) or not (1 <= len(item["requestAddress"]) <= 2000):
+                    fail_seq = item.get("seq")
+                    raise ValueError()
                 
-                for item in request_data.get("requestList", []):
-                    if not isinstance(item.get("seq"), int) or not (1 <= item["seq"] <= 99999999) or not isinstance(item.get("requestAddress"), str) or not (1 <= len(item["requestAddress"]) <= 2000):
-                        fail_seq = item.get("seq")
-                        raise ValueError()
-                    
-                # 검증된 데이터를 기반으로 라우터 또는 미들웨어 호출
-                response: Response = await route_handler(request)
+            # 검증된 데이터를 기반으로 라우터 또는 미들웨어 호출
+            response: Response = await route_handler(request)
 
-            except ValueError as ex:
-                response2 = Response_fail(HEADER=HeaderItem())
-                response2.HEADER.RESULT_CODE = "F"
-                response2.HEADER.RESULT_MSG = "seq " + str(fail_seq) + " is failed to transfer"
-                return JSONResponse(content = response2.dict())
+            # try:
+            #     fail_seq = None
+            #     # 요청 데이터를 가져오거나 검증하는 로직 추가
+            #     request_data = await request.json()
+            #     # request_data 검증 및 처리
+            #     if not request_data.get("requestList"):
+            #         return JSONResponse(content = "requestiList field is not exist.")
+                
+            #     for item in request_data.get("requestList", []):
+            #         if not isinstance(item.get("seq"), int) or not (1 <= item["seq"] <= 99999999) or not isinstance(item.get("requestAddress"), str) or not (1 <= len(item["requestAddress"]) <= 2000):
+            #             fail_seq = item.get("seq")
+            #             raise ValueError()
+                    
+            #     # 검증된 데이터를 기반으로 라우터 또는 미들웨어 호출
+            #     response: Response = await route_handler(request)
+
+            # except ValueError as ex:
+            #     response2 = Response_fail(HEADER=HeaderItem())
+            #     response2.HEADER.RESULT_CODE = "F"
+            #     response2.HEADER.RESULT_MSG = "seq " + str(fail_seq) + " is failed to transfer"
+            #     return JSONResponse(content = response2.dict())
 
             return response
         
@@ -108,6 +123,7 @@ custom_router = APIRouter(route_class = CustomAPIRoute)
 
 @custom_router.post('/')
 def create_response(item : RequestJSON):
+    print(item)
     response = ResponseJSON(HEADER=HeaderItem())
     chunk_list = lambda lst,chunk_size : [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
     
