@@ -6,7 +6,6 @@ from starlette.responses import Response
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uvicorn
-from KoreanAddress import get_address
 from omegaconf import OmegaConf
 import argparse
 from model import inference
@@ -124,6 +123,9 @@ def create_response(item : RequestJSON):
     input_df = pd.DataFrame(input_data)
     result_df = pd.DataFrame(chatgpt_result)
     
+    print(f"--------------------------1번째 결과-------------------------")   
+    print(result_df)
+    
     # 재시도할 횟수
     retry = 2
     for r in range(retry):
@@ -134,12 +136,11 @@ def create_response(item : RequestJSON):
         data_chunk = chunk_list(input_data, chunk_size)
         chatgpt_result = list(chain(*[inference(api_key,{"requestList":i}) for i in data_chunk]))
         
-        print(f"--------------------------{r+2}번째 결과-------------------------")
         for i in chatgpt_result:
             result_df.loc[result_df['seq'] == i['seq'],'resultAddress'] = i['resultAddress']
 
         
-        print(f"--------------------------{r+2}번째 결과 데이터 프레임-------------------------")        
+        print(f"--------------------------{r+2}번째 결과-------------------------")        
         print(result_df)
         
     
