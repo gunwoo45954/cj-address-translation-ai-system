@@ -71,12 +71,17 @@ def inference(api_key,input):
     5. You only need to interpret the words in the data to be translated. Only derive the result from the translation of requestAddress, you should not put any additional information.
     Please create the correct answer according to seq. The correct answer to each question is not related to the correct answer to the other question.
     Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
+    "Only derive the result from the translation of requestAddress, you should not put any additional information.
+    Please create the correct answer according to seq."
     
-    In the first example, Pelase translate "Seoul" -> "서울특별시"  "Jongno-gu" -> "종로구" "359" -> "359" and the result is "서울특별시 종로구 359".
-    In the second example, Pelase translate "지하" -> "지하"  "1822" -> "1822" "김&장" -> "김&장" and the result is "지하 1822 김&장".
+    In the first example, Please translate "Seoul" -> "서울특별시"  "Jongno-gu" -> "종로구" "359" -> "359" and the result is "서울특별시 종로구 359".
+    In the second example, Please translate "B" -> "지하"  "1822" -> "1822" and the result is "지하 1822".
+    In the third example, Please translate "Jingwan 2-ro" -> "진관2로"  "15-25B" -> "지하15-25" "Seoul" -> "서울특별시" and the result is "지하 1822 김&장".
+    In the fourth example, Please translate "지하 156" -> "지하 156"  "Seoul" -> "서울특별시"  and the result is "서울 지하 156".
     
     requestAddress : 359 Jongno-gu Jongno-gu Seoul 101동 -> requestAddress : 서울특별시 종로구 359 
-    requestAddress : 지하 1822 김&장 -> requestAddress : 지하 1822 김&장
+    requestAddress : B 1822 김&장 -> requestAddress : 지하 1822
+    requestAddress :  Jingwan 2-ro 15-25B Seoul (Jingwan-dong) -> requestAddress : 서울특별시 은평구 진관2로 지하15-25
     requestAddress : 지하 156 Seoul -> requestAddress : 서울 지하 156
     
     6. If "지하","B", "underground" or others exists in the unstructured address, they mean underground. If there's an underground meaning, please mark "지하"
@@ -117,10 +122,11 @@ def inference(api_key,input):
             model_name="gpt-3.5-turbo",
             temperature=0.4,
             max_tokens = 1000,
-            top_p = 0.2
+            top_p = 0.3,
             )
 
-        fail_code = 1        
+        fail_code = 1
+        fail_count = 0     
         while fail_code:
             result = llm(prompt)
             try:
@@ -131,6 +137,9 @@ def inference(api_key,input):
                 fail_code = 0
             except:
                 print(result)
+                fail_count+=1
+                if fail_count >3:
+                    raise ValueError
                 
         state = validate_json(result, result_schema)
     
