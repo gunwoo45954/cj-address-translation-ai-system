@@ -8,19 +8,20 @@ from typing import List, Optional
 import uvicorn
 from KoreanAddress import get_address
 from omegaconf import OmegaConf
+import argparse
 from model import inference
 
 import os
-import argparse
-import openai
 
-# 해야 할 일_0808
-# 1. request에선 seq이 int, response에선 seq이 char인데, 예시를 보면 request에서도 char를 쓰는게 좋아보임. -> 제시한 기준에 따라가기로 함.
-# 2. 성공 Response : 해석된 주소, 답 없음 / 실패 Response : 입력 형태 불일치 -> 실패 Response가 동작하기 위해선 오류 코드가 나올 시 대처할 수 있도록 설계. -> seq number만 출력되면 완성 -> 출력가능
+import openai
+from itertools import chain
+import pandas as pd
+
+# 해야 할 일_0810
+# 1. 성공 Response : 해석된 주소, 답 없음 / 실패 Response : 입력 형태 불일치 -> 실패 Response가 동작하기 위해선 오류 코드가 나올 시 대처할 수 있도록 설계. -> seq number만 출력되면 완성 -> 출력가능
     # 대신 ValueError만 대처가능. JSONDecodeError는 대처 안됨. -> JSONDecodeError가 발생하면 seq 값을 알아낼 수 없음.
-# 3. CJ에서 지급한 데이터를 json형식으로 모두 변환하여 테스트. 지연 시간도 확인. postman에서 확인가능.
-# 4. API URL로 배포. heroku 사용 예정.
-## middleware를 사용했기에 Swagger UI를 사용하지 말고 postman을 사용. Swagger UI도 동작가능.
+# 2. chat gpt모델을 바꿔가며 성능 체크.
+# 3. API URL로 배포. heroku 사용 예정.
 
 # Argument
 parser = argparse.ArgumentParser()
@@ -102,55 +103,52 @@ class CustomAPIRoute(APIRoute):
         
         return custom_route_handler
 
+
 app = FastAPI()
 custom_router = APIRouter(route_class = CustomAPIRoute)
 
-def chunk_list(lst, chunk_size):
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
-
-# app.add_middleware(RequestDataValidationMiddleware)
 
 @custom_router.post('/')
 def create_response(item : RequestJSON):
-    # 이 함수는 다음과 같은 기능을 수행
-    # 1. Chat GPT API를 사용해 영문 주소 -> 한글 주소로 번역
-    # 2. 도로명주소 검증 API를 사용해 주소 존재 여부를 확인
-    # 3. response 반환
     response = ResponseJSON(HEADER=HeaderItem())
-    request_list = item.requestList
-
-    chunk_size = 20
-    input_data =  [{'seq': i.seq, 'requestAddress': i.requestAddress} for i in request_list]
+    chunk_list = lambda lst,chunk_size : [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+    
+    
+    # 청크로 나눠서 inference 한 후 chatgpt_result 반환
+    chunk_size = 10
+    input_data = [dict(i) for i in dict(item)['requestList']]
     data_chunk = chunk_list(input_data, chunk_size)
-    data_chunk = [{"requestList":i} for i in data_chunk]
+    chatgpt_result = list(chain(*[inference(api_key,{"requestList":i}) for i in data_chunk]))
 
-    result_list = []
 
-    for idx,chunk in enumerate(data_chunk):
-        result_list += inference(chunk)["resultList"]
+    input_df = pd.DataFrame(input_data)
+    result_df = pd.DataFrame(chatgpt_result)
+    
+    # 재시도할 횟수
+    retry = 2
+    for r in range(retry):
+        print(f"--------------------------{r+2}번째 시도-------------------------")
+        no_answer_df =  input_df[result_df['resultAddress']=='답 없음'] # 답 없음으로 나온 결과들 다시 뽑아내기
+        input_data = [{'seq':seq,'requestAddress':address} for seq,address in zip(no_answer_df['seq'],no_answer_df['requestAddress'])]
         
-    result_dict = {"requestList":result_list}
-    request_list = RequestJSON(**result_dict)
-    request_list = request_list.requestList
-    body_items = []
+        data_chunk = chunk_list(input_data, chunk_size)
+        chatgpt_result = list(chain(*[inference(api_key,{"requestList":i}) for i in data_chunk]))
+        
+        print(f"--------------------------{r+2}번째 결과-------------------------")
+        for i in chatgpt_result:
+            result_df.loc[result_df['seq'] == i['seq'],'resultAddress'] = i['resultAddress']
 
-    for i in range(len(request_list)):
-        body_item = BodyItem(seq="some_value", resultAddress="some_address")
-
-        if request_list[i].seq is not None:
-            body_item.seq = str(request_list[i].seq)
+        
+        print(f"--------------------------{r+2}번째 결과 데이터 프레임-------------------------")        
+        print(result_df)
+        
     
-        if request_list[i].requestAddress is not None:
-            result_address = get_address(api_key, request_list[i].requestAddress)
-            body_item.resultAddress = result_address
-
-        result_address = get_address(api_key, request_list[i].requestAddress)
-        body_item.seq = str(request_list[i].seq)
-        body_item.resultAddress = result_address
-        body_items.append(body_item)
     
+    
+    body_items = [BodyItem(**{'seq':str(seq),'resultAddress':address}) for seq,address in zip(result_df['seq'],result_df['resultAddress'])]
     response.BODY = body_items
-
+    
+    
     return response
 
 app.include_router(custom_router)
