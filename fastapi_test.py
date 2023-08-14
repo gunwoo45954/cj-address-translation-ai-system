@@ -8,10 +8,11 @@ from typing import List, Optional
 import uvicorn
 from KoreanAddress import get_address
 from omegaconf import OmegaConf
+import argparse
 from model import inference
 
 import os
-import argparse
+
 import openai
 from itertools import chain
 import pandas as pd
@@ -76,6 +77,7 @@ class CustomAPIRoute(APIRoute):
         route_handler = super().get_route_handler()
 
         async def custom_route_handler(request: Request) -> Response:
+            # try:
             fail_seq = None
             # 요청 데이터를 가져오거나 검증하는 로직 추가
             request_data = await request.json()
@@ -91,22 +93,6 @@ class CustomAPIRoute(APIRoute):
             # 검증된 데이터를 기반으로 라우터 또는 미들웨어 호출
             response: Response = await route_handler(request)
 
-            # try:
-            #     fail_seq = None
-            #     # 요청 데이터를 가져오거나 검증하는 로직 추가
-            #     request_data = await request.json()
-            #     # request_data 검증 및 처리
-            #     if not request_data.get("requestList"):
-            #         return JSONResponse(content = "requestiList field is not exist.")
-                
-            #     for item in request_data.get("requestList", []):
-            #         if not isinstance(item.get("seq"), int) or not (1 <= item["seq"] <= 99999999) or not isinstance(item.get("requestAddress"), str) or not (1 <= len(item["requestAddress"]) <= 2000):
-            #             fail_seq = item.get("seq")
-            #             raise ValueError()
-                    
-            #     # 검증된 데이터를 기반으로 라우터 또는 미들웨어 호출
-            #     response: Response = await route_handler(request)
-
             # except ValueError as ex:
             #     response2 = Response_fail(HEADER=HeaderItem())
             #     response2.HEADER.RESULT_CODE = "F"
@@ -117,55 +103,41 @@ class CustomAPIRoute(APIRoute):
         
         return custom_route_handler
 
+
 app = FastAPI()
 custom_router = APIRouter(route_class = CustomAPIRoute)
 
 
 @custom_router.post('/')
 def create_response(item : RequestJSON):
-    print(item)
     response = ResponseJSON(HEADER=HeaderItem())
     chunk_list = lambda lst,chunk_size : [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
     
     
     # 청크로 나눠서 inference 한 후 chatgpt_result 반환
-    chunk_size = 30
+    chunk_size = 10
     input_data = [dict(i) for i in dict(item)['requestList']]
     data_chunk = chunk_list(input_data, chunk_size)
-    chatgpt_result = list(chain(*[inference({"requestList":i})["resultList"] for i in data_chunk]))
+    chatgpt_result = list(chain(*[inference(api_key,{"requestList":i}) for i in data_chunk]))
 
-    
-    # 도로명 주소 api 실행 후
-    api_result = [{"seq":i['seq'],"resultAddress":get_address(api_key,i['requestAddress'])} for i in chatgpt_result]
 
-    
-    print("--------------------------전체 결과-------------------------")
-    for i,j in zip(chatgpt_result,api_result):
-        print('%3s %30s %30s' %(i["seq"], i["requestAddress"], j["resultAddress"]))
-    
     input_df = pd.DataFrame(input_data)
-    result_df = pd.DataFrame(api_result)
+    result_df = pd.DataFrame(chatgpt_result)
     
     # 재시도할 횟수
     retry = 2
     for r in range(retry):
         print(f"--------------------------{r+2}번째 시도-------------------------")
         no_answer_df =  input_df[result_df['resultAddress']=='답 없음'] # 답 없음으로 나온 결과들 다시 뽑아내기
+        input_data = [{'seq':seq,'requestAddress':address} for seq,address in zip(no_answer_df['seq'],no_answer_df['requestAddress'])]
         
-        re_input_data = [{'seq':seq,'requestAddress':address} for seq,address in zip(no_answer_df['seq'],no_answer_df['requestAddress'])]
-        
-        re_data_chunk = chunk_list(re_input_data, chunk_size)
-        
-        re_chatgpt_result = list(chain(*[inference({"requestList":i})["resultList"] for i in re_data_chunk]))
-        re_api_result = [{"seq":i['seq'],"resultAddress":get_address(api_key,i['requestAddress'])} for i in re_chatgpt_result]
+        data_chunk = chunk_list(input_data, chunk_size)
+        chatgpt_result = list(chain(*[inference(api_key,{"requestList":i}) for i in data_chunk]))
         
         print(f"--------------------------{r+2}번째 결과-------------------------")
-        for i,j in zip(re_chatgpt_result,re_api_result):
-            print('%-3s %-30s %-30s' %(i["seq"], i["requestAddress"], j["resultAddress"]))
-        
-
-        for i in re_api_result:
+        for i in chatgpt_result:
             result_df.loc[result_df['seq'] == i['seq'],'resultAddress'] = i['resultAddress']
+
         
         print(f"--------------------------{r+2}번째 결과 데이터 프레임-------------------------")        
         print(result_df)
