@@ -16,12 +16,6 @@ import openai
 from itertools import chain
 import pandas as pd
 
-# 해야 할 일_0810
-# 1. 성공 Response : 해석된 주소, 답 없음 / 실패 Response : 입력 형태 불일치 -> 실패 Response가 동작하기 위해선 오류 코드가 나올 시 대처할 수 있도록 설계. -> seq number만 출력되면 완성 -> 출력가능
-    # 대신 ValueError만 대처가능. JSONDecodeError는 대처 안됨. -> JSONDecodeError가 발생하면 seq 값을 알아낼 수 없음.
-# 2. chat gpt모델을 바꿔가며 성능 체크.
-# 3. API URL로 배포. heroku 사용 예정.
-
 # Argument
 parser = argparse.ArgumentParser()
 parser.add_argument('--config','-c', type=str, default='')
@@ -102,16 +96,13 @@ class CustomAPIRoute(APIRoute):
         
         return custom_route_handler
 
-
 app = FastAPI()
 custom_router = APIRouter(route_class = CustomAPIRoute)
-
 
 @custom_router.post('/')
 def create_response(item : RequestJSON):
     response = ResponseJSON(HEADER=HeaderItem())
     chunk_list = lambda lst,chunk_size : [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
-    
     
     # 청크로 나눠서 inference 한 후 chatgpt_result 반환
     chunk_size = 10
@@ -119,17 +110,12 @@ def create_response(item : RequestJSON):
     data_chunk = chunk_list(input_data, chunk_size)
     chatgpt_result = list(chain(*[inference(api_key,{"requestList":i}) for i in data_chunk]))
 
-
     input_df = pd.DataFrame(input_data)
     result_df = pd.DataFrame(chatgpt_result)
-    
-    print(f"--------------------------1번째 결과-------------------------")   
-    print(result_df)
     
     # 재시도할 횟수
     retry = 2
     for r in range(retry):
-        print(f"--------------------------{r+2}번째 시도-------------------------")
         no_answer_df =  input_df[result_df['resultAddress']=='답 없음'] # 답 없음으로 나온 결과들 다시 뽑아내기
         input_data = [{'seq':seq,'requestAddress':address} for seq,address in zip(no_answer_df['seq'],no_answer_df['requestAddress'])]
         
@@ -139,16 +125,8 @@ def create_response(item : RequestJSON):
         for i in chatgpt_result:
             result_df.loc[result_df['seq'] == i['seq'],'resultAddress'] = i['resultAddress']
 
-        
-        print(f"--------------------------{r+2}번째 결과-------------------------")        
-        print(result_df)
-        
-    
-    
-    
     body_items = [BodyItem(**{'seq':str(seq),'resultAddress':address}) for seq,address in zip(result_df['seq'],result_df['resultAddress'])]
     response.BODY = body_items
-    
     
     return response
 
