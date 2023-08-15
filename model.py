@@ -103,8 +103,7 @@ def inference(api_key,input):
     Input:
     {Address_Input}
     """
-    
-    print(len(input))
+
 
     # 전처리 추가
     pre_data = dict()
@@ -118,16 +117,19 @@ def inference(api_key,input):
             template=template,
         )
         prompt = prompt.format(Address_Input=pre_data, output_schema=result_schema)   
-        llm = OpenAI(
-            model_name="gpt-3.5-turbo",
-            temperature=0.4,
-            max_tokens = 1000,
-            top_p = 0.3,
-            )
 
         fail_code = 1
         fail_count = 0     
+        
+        temperature_value = 0.4
         while fail_code:
+            
+            llm = OpenAI(
+                model_name="gpt-3.5-turbo",
+                temperature = temperature_value,
+                max_tokens = 1000,
+                top_p = 0.3,
+            )
             result = llm(prompt)
             try:
                 result = re.sub(r'\n',' ',result)
@@ -138,11 +140,15 @@ def inference(api_key,input):
             except:
                 print(result)
                 fail_count+=1
+                temperature_value += 0.1
                 if fail_count >3:
                     raise ValueError
-                
-        state = validate_json(result, result_schema)
-    
+        
+        print(len(input['requestList']), len(result['resultList']))
+        state = validate_json(result, result_schema) and (len(input['requestList']) == len(result['resultList']))
+        
+        
+
 
     post_data = [{'seq': i["seq"], 'requestAddress' : post_processing(i["requestAddress"]),'ChatGPTAddress' : i["requestAddress"]} for i in result["resultList"]]
     
