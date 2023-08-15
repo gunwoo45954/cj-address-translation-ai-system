@@ -5,8 +5,9 @@ from utils import pre_processing, post_processing, validate_json
 from KoreanAddress import get_address
 from langchain import PromptTemplate
 from langchain.llms import OpenAI
+import os
 
-def inference(api_key,input):
+def inference(api_key,input, l,result_queue):
     # Define the JSON Schema
     result_schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -42,7 +43,7 @@ def inference(api_key,input):
     - You only need to interpret the words in the data to be translated. Only derive the result from the translation of requestAddress, you should not put any additional information.
     Please create the correct answer according to seq. The correct answer to each question is not related to the correct answer to the other question.
     Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
-    
+    - You must make it into a complete dict(). In the middle, '...' should not be created.
     |End of task|
 
     |Start of Rule|
@@ -93,6 +94,7 @@ def inference(api_key,input):
     Even if you can infer through another requestAddress, you should only translate it through the address shown in seq.
     - You should write all the answers in Korean. There should be no less translated parts of English.
     - Please answer in order of wide area to narrow area.
+    - You must make it into a complete dict(). In the middle, '...' should not be created.
     
     Input:
     {Address_Input}
@@ -116,13 +118,12 @@ def inference(api_key,input):
         
         temperature_value = 0.4
         while fail_code:
-            
             llm = OpenAI(
-                model_name="gpt-3.5-turbo",
-                temperature = temperature_value,
-                max_tokens = 1000,
-                top_p = 0.3,
-            )
+                    model_name="gpt-3.5-turbo",
+                    temperature = temperature_value,
+                    max_tokens = 1000,
+                    top_p = 0.3,
+                )
             result = llm(prompt)
             try:
                 result = re.sub(r'\n',' ',result)
@@ -136,7 +137,7 @@ def inference(api_key,input):
                 temperature_value += 0.1
                 if fail_count >3:
                     raise ValueError
-        
+
         state = validate_json(result, result_schema) and (len(input['requestList']) == len(result['resultList']))
         
     post_data = [{'seq': i["seq"], 'requestAddress' : post_processing(i["requestAddress"]),'ChatGPTAddress' : i["requestAddress"]} for i in result["resultList"]]
@@ -144,4 +145,8 @@ def inference(api_key,input):
     # 도로명 주소 api 실행 후
     api_result = [{"seq":i['seq'],"resultAddress":get_address(api_key,i['requestAddress'])} for i in post_data]
 
-    return api_result
+    l.acquire()
+    try:
+        result_queue.put(api_result)
+    finally:
+        l.release()
