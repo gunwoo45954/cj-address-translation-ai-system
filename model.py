@@ -125,6 +125,9 @@ def inference(api_key,input, l,result_queue):
                     top_p = 0.3,
                 )
             result = llm(prompt)
+
+            del llm
+            
             try:
                 result = re.sub(r'\n',' ',result)
                 result = re.sub(r'\s+',' ',result)

@@ -27,7 +27,6 @@ def pre_processing(text):
     if s:
         text = text[:s.span()[0]] + text[s.span()[1]:]
     
-    
     # # 지하 전처리
     text = re.sub("B1-","B",text)
     p = re.compile(r"(B\s?([0-9]{1,}|,)| B |([0-9]{1,}\s?|,)B)")
@@ -73,10 +72,10 @@ def pre_processing(text):
         else:
             text = text[:s.start()]+ match +text[s.end():]
     
-
     text = re.sub(r"\s+"," ",text).strip()            
 
     return text
+
 def post_processing(text):
     text = re.sub(r'[bB]', ' 지하 ', text)
     
@@ -102,13 +101,9 @@ def post_processing(text):
         match = text[s3.start():s3.end()]
         text = re.sub(match," "+match,text)
     
-    
-    
     text = re.sub(r"\s+"," ",text).strip()
     
-    
     return text
-
 
 def validate_json(data, schema):
     # Validate the JSON against the schema
