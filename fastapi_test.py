@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--config','-c', type=str, default='')
 args, _ = parser.parse_known_args()
 
-conf = OmegaConf.load(f'./config/{args.config}.yaml')
+conf = OmegaConf.load('./config/config.yaml')
 
 # 도로명주소, Chat GPT api_key 값 할당
 api_key = conf.api
