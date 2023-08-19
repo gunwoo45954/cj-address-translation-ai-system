@@ -35,7 +35,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
     # requestAddress : 요청 영문주소 (CHAR)
 
 class RequestItem(BaseModel):
-    seq : int = Field(gt = 0, le = 99999999)
+    seq : str = Field(..., max_length=8)
     requestAddress : str = Field(..., max_length=2000)
 
 class RequestJSON(BaseModel):
@@ -78,7 +78,7 @@ class CustomAPIRoute(APIRoute):
                     return JSONResponse(content = "requestiList field is not exist.")
                 
                 for item in request_data.get("requestList", []):
-                    if not isinstance(item.get("seq"), int) or not (1 <= item["seq"] <= 99999999) or not isinstance(item.get("requestAddress"), str) or not (1 <= len(item["requestAddress"]) <= 2000):
+                    if not isinstance(item.get("seq"), str) or not (1 <= len(item["seq"]) <= 8) or not isinstance(item.get("requestAddress"), str) or not (1 <= len(item["requestAddress"]) <= 2000):
                         fail_seq = item.get("seq")
                         raise ValueError()
                     
