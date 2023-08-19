@@ -7,7 +7,7 @@ from langchain import PromptTemplate
 from langchain.llms import OpenAI
 import os
 
-def inference(api_key,input, l,result_queue):
+def inference(api_key,input, l,result_queue, idx):
     # Define the JSON Schema
     result_schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -148,7 +148,7 @@ def inference(api_key,input, l,result_queue):
     # print("chat 실행")
     # print(post_data)
     # 도로명 주소 api 실행 후
-    api_result = [{"seq":i['seq'],"resultAddress":get_address(api_key,i['requestAddress'])} for i in post_data]
+    api_result = [{"seq":i['seq'],"resultAddress":get_address(api_key[idx%2],i['requestAddress'])} for i in post_data]
 
     l.acquire()
     try:
