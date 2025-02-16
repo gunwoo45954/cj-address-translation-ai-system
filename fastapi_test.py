@@ -128,36 +128,6 @@ def create_response(item : RequestJSON):
     chatgpt_result = list(chain(*chatgpt_result))
 
     body_items = [BodyItem(**{"seq":str(i['seq']),"resultAddress":i['resultAddress']}) for i in chatgpt_result]
-    # input_df = pd.DataFrame(input_data)
-    # result_df = pd.DataFrame(chatgpt_result)
-
-    # # 재시도할 횟수
-    # retry = 2
-    # for r in range(retry):
-    #     no_answer_df =  input_df[result_df['resultAddress']=='답 없음'] # 답 없음으로 나온 결과들 다시 뽑아내기
-        
-    #     input_data = [{'seq':seq,'requestAddress':address} for seq,address in zip(no_answer_df['seq'],no_answer_df['requestAddress'])]
-    #     data_chunk = chunk_list(input_data, chunk_size)
-        
-    #     q = Queue()
-    #     processes = []
-        
-    #     for i in data_chunk:
-    #         p = Process(target=inference, args=(api_key, {"requestList":i}, lock, q))
-    #         processes.append(p)
-    #         p.start()
-        
-    #     for p in processes:
-    #         p.join()
-        
-    #     chatgpt_result = []
-    #     while not q.empty():
-    #         chatgpt_result.append(q.get())
-    #     chatgpt_result = list(chain(*chatgpt_result))
-        
-    #     for i in chatgpt_result:
-    #         result_df.loc[result_df['seq'] == i['seq'],'resultAddress'] = i['resultAddress']
-
     
     response.BODY = body_items
     return response
